@@ -1,0 +1,72 @@
+.wrap {
+  display: grid;
+  grid-template-columns: 320px 1fr;
+  gap: 20px;
+  min-height: 600px;
+}
+
+.sidebar {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px;
+  overflow-y: auto;
+}
+
+.sectionTitle {
+  font-size: 12px;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-secondary);
+  margin-bottom: 12px;
+}
+
+.hint { font-size: 12px; color: var(--text-muted); }
+
+.variantList { display: flex; flex-direction: column; gap: 8px; }
+
+.variantItem {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  padding: 8px;
+  background: var(--bg-elevated);
+  border-radius: var(--radius-sm);
+  font-size: 12px;
+}
+
+.code { font-family: monospace; color: var(--text-secondary); }
+
+.divider { height: 1px; background: var(--border); margin: 16px 0; }
+
+.field { margin-bottom: 12px; }
+.label { display: block; font-size: 11px; font-weight: 600; color: var(--text-secondary); text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 5px; }
+.input { width: 100%; padding: 7px 10px; background: var(--bg-elevated); border: 1px solid var(--border); border-radius: var(--radius-sm); color: var(--text-primary); font-size: 13px; }
+
+.langRow { display: flex; gap: 8px; margin-bottom: 4px; }
+.langBtn { padding: 5px 14px; border: 1px solid var(--border); border-radius: 16px; background: var(--bg-elevated); color: var(--text-secondary); font-size: 12px; cursor: pointer; transition: all 0.15s; }
+.langBtn:hover { border-color: var(--accent); color: var(--accent); }
+.langBtn.selected { background: var(--accent-dim); border-color: var(--accent); color: var(--accent); }
+
+.actions { display: flex; gap: 8px; }
+
+.preview {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.previewFrame { flex: 1; border: none; background: #fff; }
+
+.previewEmpty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  font-size: 13px;
+}

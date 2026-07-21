@@ -1,0 +1,47 @@
+.toolbar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  margin-bottom: 12px;
+  flex-wrap: wrap;
+}
+
+.filters { display: flex; gap: 8px; }
+
+.filterInput {
+  padding: 6px 10px;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.actions { display: flex; align-items: center; gap: 8px; }
+
+.count { font-size: 12px; color: var(--text-muted); }
+
+.tableWrap {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow: auto;
+}
+
+.selected td { background: var(--accent-dim); }
+
+.variant { font-size: 12px; }
+.hgvsp   { color: var(--text-secondary); }
+.muted   { color: var(--text-secondary); font-size: 12px; }
+
+.overrideSelect {
+  font-size: 12px;
+  padding: 3px 6px;
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text-primary);
+}
+
+.empty { text-align: center; padding: 32px; color: var(--text-muted); }
