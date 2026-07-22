@@ -1,4 +1,5 @@
-const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? 'http://localhost:4000';
+// Use /api proxy (Next.js rewrite) so only port 3000 needs forwarding in remote dev.
+const API_BASE = process.env.NEXT_PUBLIC_API_URL ?? '/api';
 
 export class ApiError extends Error {
   constructor(

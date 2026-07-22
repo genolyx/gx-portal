@@ -1,8 +1,9 @@
+/* Review page tabs */
 .tabs {
   display: flex;
   gap: 2px;
   border-bottom: 1px solid var(--border);
-  margin-bottom: 20px;
+  margin-bottom: 16px;
 }
 
 .tab {
@@ -16,17 +17,105 @@
   cursor: pointer;
   transition: color 0.15s, border-color 0.15s;
   margin-bottom: -1px;
+  white-space: nowrap;
 }
-
 .tab:hover  { color: var(--text-primary); }
-.tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+.tab.active { color: var(--brand); border-bottom-color: var(--brand); }
 
-.panel {
-  min-height: 400px;
-}
+.panel { min-height: 400px; }
 
 .center {
   text-align: center;
   padding: 48px;
   color: var(--text-muted);
+}
+
+/* ── Carrier banner ─────────────────────────────────────────────────────────── */
+.carrierBanner {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  padding: 12px 16px;
+  border-radius: 12px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.bannerPositive  { background: var(--pill-err-bg, rgba(220,38,38,.12));  border: 1px solid var(--pill-err-bd, rgba(220,38,38,.3)); }
+.bannerUncertain { background: var(--pill-warn-bg, rgba(217,119,6,.12)); border: 1px solid var(--pill-warn-bd, rgba(217,119,6,.3)); }
+.bannerNegative  { background: var(--pill-done-bg, rgba(22,163,74,.12)); border: 1px solid var(--pill-done-bd, rgba(22,163,74,.3)); }
+
+.bannerIcon { font-size: 24px; flex-shrink: 0; }
+.bannerText { font-weight: 700; font-size: 15px; }
+.bannerDetail { font-size: 12px; color: var(--text-muted); }
+
+/* ── Result meta ────────────────────────────────────────────────────────────── */
+.resultMeta {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin-bottom: 12px;
+  line-height: 1.6;
+}
+
+/* ── QC panel ───────────────────────────────────────────────────────────────── */
+.qcPanel {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  margin-bottom: 16px;
+  overflow: hidden;
+}
+.qcTitle {
+  font-size: 13px;
+  font-weight: 700;
+  margin: 0;
+  padding: 10px 14px;
+  border-bottom: 1px solid var(--border);
+  cursor: pointer;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  background: var(--bg-elevated);
+}
+.qcGrid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0;
+  padding: 0;
+}
+@media (max-width: 640px) { .qcGrid { grid-template-columns: 1fr; } }
+
+.qcSection { border-right: 1px solid var(--border); }
+.qcSection:last-child { border-right: none; }
+.qcSection summary {
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 8px 14px;
+  color: var(--text-muted);
+  user-select: none;
+  list-style: none;
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.qcSection summary::marker { display: none; }
+.qcSection summary::-webkit-details-marker { display: none; }
+
+.qcTableWrap { overflow-x: auto; }
+.qcTable { width: 100%; border-collapse: collapse; font-size: 11px; }
+.qcTable th,
+.qcTable td { padding: 5px 14px; border-bottom: 1px solid var(--border); text-align: left; white-space: nowrap; }
+.qcTable thead th { background: transparent; color: var(--text-muted); font-size: 10px; text-transform: uppercase; letter-spacing: 0.04em; }
+.qcTable tbody tr:hover td { background: rgba(106,163,255,.06); }
+
+.qcStatusOk   { color: #16a34a; font-weight: 600; }
+.qcStatusWarn { color: #d97706; font-weight: 600; }
+.qcStatusErr  { color: #dc2626; font-weight: 600; }
+
+.qcRight { display: flex; flex-direction: column; }
+.qcReports {
+  padding: 10px 14px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
 }

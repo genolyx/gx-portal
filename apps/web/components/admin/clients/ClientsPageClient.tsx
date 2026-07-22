@@ -52,6 +52,7 @@ export function ClientsPageClient() {
             <thead>
               <tr>
                 <th>Name</th>
+                <th>Prefix</th>
                 <th>Type</th>
                 <th>Sequencing</th>
                 <th>Services</th>
@@ -71,6 +72,7 @@ export function ClientsPageClient() {
                       {c.name}
                     </button>
                   </td>
+                  <td className={styles.muted}>{c.order_prefix ?? '—'}</td>
                   <td>
                     <Badge variant={c.type === 'Managing' ? 'accent' : 'default'}>{c.type}</Badge>
                   </td>

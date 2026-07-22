@@ -1,25 +1,45 @@
 .empty { color: var(--text-muted); padding: 32px; text-align: center; }
 
-.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.toolbar { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px; }
 .title { font-size: 15px; font-weight: 600; }
 
-.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 14px; }
+.groupTitle { font-size: 13px; font-weight: 600; margin: 0 0 10px; color: var(--text-secondary); }
+
+.grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(260px, 1fr)); gap: 12px; }
 
 .card {
   background: var(--bg-surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
-  padding: 16px;
+  padding: 14px;
   transition: border-color 0.15s;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
-.card.confirmed { border-color: var(--success); }
+.card.confirmed { border-color: var(--success, #16a34a); background: rgba(22,163,74,.06); }
 
-.cardHeader { display: flex; justify-content: space-between; align-items: center; margin-bottom: 10px; }
+.cardHeader { display: flex; justify-content: space-between; align-items: flex-start; gap: 8px; margin-bottom: 2px; }
 
-.confirmToggle { display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-secondary); cursor: pointer; }
+.confirmToggle { display: flex; align-items: center; gap: 5px; font-size: 12px; color: var(--text-secondary); cursor: pointer; flex-shrink: 0; }
 
-.diplotype { font-family: monospace; font-size: 12px; color: var(--text-secondary); margin-bottom: 6px; }
-.detail    { font-size: 12px; color: var(--text-secondary); margin-top: 6px; }
+.diplotype { font-family: ui-monospace, Consolas, monospace; font-size: 12px; color: var(--text-secondary); margin: 0; }
+.detail    { font-size: 12px; color: var(--text-secondary); margin: 0; }
 
-.recs { margin-top: 8px; padding-left: 16px; font-size: 12px; color: var(--text-secondary); }
-.recs li { margin-bottom: 4px; }
+.recs { margin: 2px 0 0; padding-left: 16px; font-size: 12px; color: var(--text-secondary); }
+.recs li { margin-bottom: 3px; }
+
+.expandBtn {
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 11px;
+  color: var(--text-muted);
+  padding: 2px 0;
+  text-align: left;
+  margin-top: 2px;
+}
+.expandBtn:hover { color: var(--brand); }
+
+.expandBody { font-size: 12px; color: var(--text-secondary); border-top: 1px solid var(--border); padding-top: 6px; margin-top: 2px; }
+

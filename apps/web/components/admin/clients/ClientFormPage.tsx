@@ -23,6 +23,7 @@ export function ClientFormPage({ id }: Props) {
 
   const [form, setForm] = useState<CreateClientDto>({
     name: '',
+    order_prefix: '',
     address: '',
     email: '',
     phone: '',
@@ -46,6 +47,7 @@ export function ClientFormPage({ id }: Props) {
       clientsApi.getById(Number(id)).then((c: Client) => {
         setForm({
           name: c.name,
+          order_prefix: c.order_prefix ?? '',
           address: c.address ?? '',
           email: c.email ?? '',
           phone: c.phone ?? '',
@@ -103,6 +105,20 @@ export function ClientFormPage({ id }: Props) {
               required
               className={styles.input}
             />
+          </div>
+
+          <div className={styles.field}>
+            <label className={styles.label}>Order Prefix <span className={styles.req}>*</span></label>
+            <input
+              value={form.order_prefix ?? ''}
+              onChange={(e) => set('order_prefix', e.target.value.toUpperCase())}
+              required
+              maxLength={2}
+              placeholder="GX"
+              className={styles.input}
+              style={{ maxWidth: 80, textTransform: 'uppercase' }}
+            />
+            <p className={styles.hint}>Two letters used in order IDs (e.g. CS<strong>GX</strong>26070001).</p>
           </div>
 
           <div className={styles.field}>

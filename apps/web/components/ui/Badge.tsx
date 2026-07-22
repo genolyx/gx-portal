@@ -1,32 +1,47 @@
-import clsx from 'clsx';
-import styles from './Badge.module.css';
+import { cva, type VariantProps } from 'class-variance-authority';
+import { cn } from '../../lib/utils';
 
-type BadgeVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
+const badgeVariants = cva(
+  'inline-flex items-center rounded-gx-sm px-2 py-0.5 text-xs font-semibold',
+  {
+    variants: {
+      variant: {
+        default: 'bg-gx-elevated text-gx-text-2',
+        success: 'bg-gx-success/15 text-gx-success',
+        warning: 'bg-gx-warning/15 text-gx-warning',
+        danger:  'bg-gx-danger/15  text-gx-danger',
+        info:    'bg-gx-info/15    text-gx-info',
+        accent:  'bg-gx-accent-dim text-gx-accent',
+      },
+    },
+    defaultVariants: { variant: 'default' },
+  },
+);
 
-interface BadgeProps {
+interface BadgeProps extends VariantProps<typeof badgeVariants> {
   children: React.ReactNode;
-  variant?: BadgeVariant;
   className?: string;
 }
 
-export function Badge({ children, variant = 'default', className }: BadgeProps) {
+export function Badge({ variant, className, children }: BadgeProps) {
   return (
-    <span className={clsx(styles.badge, styles[variant], className)}>
+    <span className={cn(badgeVariants({ variant }), className)}>
       {children}
     </span>
   );
 }
 
+type StatusVariant = 'default' | 'success' | 'warning' | 'danger' | 'info' | 'accent';
+
 export function OrderStatusBadge({ status }: { status: string }) {
-  const variantMap: Record<string, BadgeVariant> = {
-    COMPLETED: 'success',
+  const map: Record<string, StatusVariant> = {
+    COMPLETED:    'success',
     REPORT_READY: 'success',
-    RUNNING: 'info',
-    QUEUED: 'warning',
-    FAILED: 'danger',
-    CANCELLED: 'danger',
-    SAVED: 'default',
+    RUNNING:      'info',
+    QUEUED:       'warning',
+    FAILED:       'danger',
+    CANCELLED:    'danger',
+    SAVED:        'default',
   };
-  const variant = variantMap[status] ?? 'default';
-  return <Badge variant={variant}>{status}</Badge>;
+  return <Badge variant={map[status] ?? 'default'}>{status}</Badge>;
 }

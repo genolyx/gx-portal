@@ -3,18 +3,172 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-md);
   overflow: hidden;
+  display: flex;
+  flex-direction: column;
 }
 
-.header {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--border);
+/* ── BAM info bar ── */
+.bamBar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
   background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+  font-size: 12px;
+}
+.bamLabel {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  font-weight: 600;
+  margin-right: 4px;
+}
+.bamName { font-size: 12px; color: var(--accent); }
+.bamMeta { color: var(--text-muted); font-size: 11px; }
+.reloadBtn {
+  margin-left: auto;
+  background: none;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.reloadBtn:hover { border-color: var(--accent); color: var(--accent); }
+
+/* ── Control rows ── */
+.controlRow {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+  flex-wrap: wrap;
+}
+.label {
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--text-muted);
+  white-space: nowrap;
+  margin-right: 4px;
+}
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 12px;
+  cursor: pointer;
+  color: var(--text-secondary);
+}
+.input {
+  padding: 4px 8px;
+  border: 1px solid var(--border);
+  border-radius: 4px;
+  background: var(--bg-input, var(--bg-elevated));
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+}
+.input:focus { border-color: var(--accent); }
+
+.btnPrimary {
+  padding: 4px 14px;
+  border-radius: 4px;
+  background: var(--accent);
+  color: #fff;
+  border: none;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnPrimary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btnPrimary:hover:not(:disabled) { opacity: 0.88; }
+
+.btnSecondary {
+  padding: 4px 12px;
+  border-radius: 4px;
+  background: var(--bg-elevated);
+  color: var(--text-secondary);
+  border: 1px solid var(--border);
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnSecondary:disabled { opacity: 0.4; cursor: not-allowed; }
+.btnSecondary:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+
+.btnGhost {
+  padding: 4px 10px;
+  border-radius: 4px;
+  background: none;
+  color: var(--text-muted);
+  border: 1px solid transparent;
+  font-size: 12px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.btnGhost:hover { border-color: var(--border); color: var(--text-secondary); }
+
+.varInfo {
+  font-size: 11px;
+  color: var(--text-secondary);
+  padding: 2px 8px;
+  background: var(--bg-elevated);
+  border-radius: 4px;
+  border: 1px solid var(--border);
+  max-width: 500px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
-.info { font-size: 12px; color: var(--text-secondary); }
-.info code { font-size: 11px; }
+/* ── CFTR IVS9 info block ── */
+.cftrInfo {
+  padding: 10px 14px;
+  font-size: 11px;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  background: var(--bg-elevated);
+  border-bottom: 1px solid var(--border);
+}
+.cftrInfo code { font-size: 10px; }
 
-.igvContainer { min-height: 500px; }
+/* ── IGV container ── */
+.igvContainer {
+  min-height: 500px;
+  flex: 1;
+}
 
-.loading, .empty { text-align: center; padding: 40px; color: var(--text-muted); }
+/* ── IGV placeholder (before Load button clicked) ── */
+.igvPlaceholder {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  min-height: 180px;
+  gap: 8px;
+  color: var(--text-muted);
+  font-size: 13px;
+  background: var(--bg-elevated);
+  border-top: 1px solid var(--border);
+  padding: 40px 20px;
+}
+.igvPlaceholderHint {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.igvPlaceholderHint code { font-size: 11px; }
+
+/* ── States ── */
+.loading, .empty {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-muted);
+  font-size: 13px;
+}
 .error { text-align: center; padding: 40px; color: var(--danger); }

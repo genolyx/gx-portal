@@ -1,0 +1,188 @@
+/* Config page layout */
+.pageBody {
+  display: flex;
+  flex-direction: column;
+  gap: 20px;
+  max-width: 1100px;
+}
+
+/* Section card */
+.section {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 20px 22px;
+}
+
+.sectionTitle {
+  font-size: 14px;
+  font-weight: 700;
+  margin: 0 0 6px;
+  color: var(--text-primary);
+}
+.sectionDesc {
+  font-size: 12px;
+  color: var(--text-muted);
+  margin: 0 0 16px;
+  line-height: 1.5;
+}
+
+/* Label & inputs */
+.label {
+  display: block;
+  font-size: 12px;
+  font-weight: 600;
+  margin-bottom: 4px;
+  color: var(--text-secondary);
+}
+.input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 9px 12px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-family: ui-monospace, Consolas, monospace;
+  font-size: 13px;
+}
+.input:focus { outline: none; border-color: var(--brand); }
+
+/* Row / field groups */
+.row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  align-items: flex-start;
+  margin-bottom: 12px;
+}
+.fieldGrow { flex: 2; min-width: 200px; }
+.fieldFixed { flex: 1; min-width: 160px; }
+
+/* Preset buttons */
+.presetRow {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 14px;
+}
+.presetBtn {
+  padding: 6px 14px;
+  border-radius: var(--radius-sm);
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.presetBtn:hover { border-color: var(--brand); color: var(--brand); }
+.presetActive { border-color: var(--brand); background: var(--accent-dim); color: var(--brand); font-weight: 700; }
+
+/* Action row */
+.actionRow {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 12px;
+  flex-wrap: wrap;
+}
+
+/* Status */
+.ok   { font-size: 12px; color: var(--success, #16a34a); }
+.err  { font-size: 12px; color: var(--danger, #dc2626); }
+.muted { font-size: 12px; color: var(--text-muted); font-weight: 400; }
+.hint { font-size: 11px; color: var(--text-muted); margin: 6px 0 0; line-height: 1.45; }
+
+/* ── Daemon Log ────────────────────────────────────────────────────── */
+.logHeader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 20px;
+  margin-bottom: 8px;
+  flex-wrap: wrap;
+}
+.logTitle { font-size: 13px; font-weight: 700; }
+.logStatus { font-size: 11px; color: var(--text-muted); margin-left: auto; }
+
+.checkLabel {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  font-size: 11px;
+  cursor: pointer;
+  white-space: nowrap;
+}
+.selectSm {
+  font-size: 11px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-elevated);
+  color: var(--text-primary);
+}
+
+.logBox {
+  background: #050810;
+  color: #b0bec5;
+  font-family: ui-monospace, 'Fira Mono', Consolas, monospace;
+  font-size: 11.5px;
+  line-height: 1.55;
+  padding: 12px 14px;
+  border-radius: var(--radius-md);
+  border: 1px solid var(--border);
+  height: 500px;
+  min-height: 120px;
+  max-height: 800px;
+  overflow-y: auto;
+  overflow-x: auto;
+  white-space: pre;
+  margin: 0;
+  tab-size: 2;
+  resize: vertical;
+}
+
+/* ── AI Provider ───────────────────────────────────────────────────── */
+.radioRow {
+  display: flex;
+  gap: 20px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.radioLabel {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.infoBox {
+  background: var(--bg-elevated);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 10px 14px;
+  font-size: 12px;
+  margin-bottom: 4px;
+}
+.infoBox p { margin: 0 0 4px; }
+.infoBox p:last-child { margin: 0; }
+
+/* ── Pipeline Options ──────────────────────────────────────────────── */
+.checkRow {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 6px;
+}
+.checkbox {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+/* legacy grid (kept for backwards compat if needed) */
+.error { color: var(--danger, #dc2626); margin-bottom: 16px; }

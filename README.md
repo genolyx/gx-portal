@@ -91,6 +91,7 @@ Open http://localhost:8090
 
 ```
 Client
+  ├── order_prefix: string     ← 2-letter code in order IDs (e.g. GX)
   ├── type: Managing | Service
   ├── sequencing_data_method: Remote | Local
   ├── service_codes: string[]   ← allowed gx-daemon services
@@ -104,4 +105,13 @@ User
   ├── role: admin | client | lab
   ├── client_id? → Client   (if role = client)
   └── lab_id?    → Lab      (if role = lab)
+
+Portal order registry (portal.db)
+  ├── order_id (PK)           ← canonical ID, same key in gx-daemon
+  ├── client_id → Client
+  ├── legacy_order_id         ← original ID after migration (shown as Description)
+  └── service_code
+
+Order ID format: {Service}{Client}{YYMM}{seq4}
+  CS / SN / WE / HS + GX + 2607 + 0001  →  CSGX26070001
 ```

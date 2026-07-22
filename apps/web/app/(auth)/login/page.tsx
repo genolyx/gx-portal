@@ -3,7 +3,9 @@
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { authApi } from '../../../lib/api/auth';
-import styles from './login.module.css';
+import { Input } from '../../../components/ui/Input';
+import { Label } from '../../../components/ui/Label';
+import { Button } from '../../../components/ui/Button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -27,41 +29,56 @@ export default function LoginPage() {
   };
 
   return (
-    <div className={styles.container}>
-      <div className={styles.card}>
-        <div className={styles.logo}>
-          <span className={styles.logoIcon}>⬡</span>
-          <span className={styles.logoTitle}>Gx-Portal</span>
-        </div>
-        <p className={styles.subtitle}>Genolyx Analysis Portal</p>
+    <div className="min-h-screen flex items-center justify-center bg-gx-bg">
+      <div className="w-[360px] bg-gx-surface border border-gx-border rounded-gx-lg shadow-gx-md p-10">
 
-        <form onSubmit={handleSubmit} className={styles.form}>
-          <div className={styles.field}>
-            <label className={styles.label}>Username</label>
-            <input
+        {/* Logo */}
+        <div className="flex items-center gap-2.5 mb-1">
+          <span className="text-[28px] text-gx-accent leading-none">⬡</span>
+          <span className="text-[22px] font-bold text-gx-text">Gx-Portal</span>
+        </div>
+        <p className="text-xs text-gx-text-2 mb-7">Genolyx Analysis Portal</p>
+
+        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="username">Username</Label>
+            <Input
+              id="username"
               type="text"
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              className={styles.input}
               autoComplete="username"
               required
             />
           </div>
-          <div className={styles.field}>
-            <label className={styles.label}>Password</label>
-            <input
+
+          <div className="flex flex-col gap-1.5">
+            <Label htmlFor="password">Password</Label>
+            <Input
+              id="password"
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className={styles.input}
               autoComplete="current-password"
               required
             />
           </div>
-          {error && <p className={styles.error}>{error}</p>}
-          <button type="submit" className={styles.submit} disabled={loading}>
-            {loading ? 'Signing in…' : 'Sign In'}
-          </button>
+
+          {error && (
+            <p className="text-xs text-gx-danger bg-gx-danger/10 rounded-gx-sm px-3 py-2">
+              {error}
+            </p>
+          )}
+
+          <Button
+            type="submit"
+            variant="primary"
+            size="lg"
+            loading={loading}
+            className="w-full mt-1"
+          >
+            Sign In
+          </Button>
         </form>
       </div>
     </div>

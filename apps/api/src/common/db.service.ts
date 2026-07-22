@@ -85,7 +85,40 @@ export class DbService implements OnModuleInit {
         email_notification  INTEGER NOT NULL DEFAULT 0,
         created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
       );
+
+      -- Portal order registry (client ownership + ID rules; pipeline data stays in gx-daemon)
+      CREATE TABLE IF NOT EXISTS portal_orders (
+        order_id         TEXT    PRIMARY KEY NOT NULL,
+        client_id        INTEGER NOT NULL REFERENCES clients(id),
+        created_by       INTEGER REFERENCES users(id) ON DELETE SET NULL,
+        service_code     TEXT    NOT NULL,
+        legacy_order_id  TEXT,
+        work_dir         TEXT,
+        created_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+      );
+
+      CREATE INDEX IF NOT EXISTS idx_portal_orders_client ON portal_orders(client_id);
+      CREATE INDEX IF NOT EXISTS idx_portal_orders_legacy ON portal_orders(legacy_order_id);
+
+      CREATE TABLE IF NOT EXISTS order_sequences (
+        client_id       INTEGER NOT NULL REFERENCES clients(id) ON DELETE CASCADE,
+        service_prefix  TEXT    NOT NULL,
+        yymm            TEXT    NOT NULL,
+        last_seq        INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (client_id, service_prefix, yymm)
+      );
+
+      CREATE TABLE IF NOT EXISTS portal_meta (
+        key   TEXT PRIMARY KEY NOT NULL,
+        value TEXT NOT NULL
+      );
     `);
+
+    this.ensureColumn('clients', 'order_prefix', 'TEXT');
+    this.ensureColumn('portal_orders', 'description', 'TEXT');
+    this.db.exec(
+      'CREATE UNIQUE INDEX IF NOT EXISTS idx_clients_order_prefix ON clients(order_prefix) WHERE order_prefix IS NOT NULL',
+    );
 
     // seed default admin
     const count = (this.db.prepare('SELECT COUNT(*) as n FROM users').get() as { n: number }).n;
@@ -97,6 +130,13 @@ export class DbService implements OnModuleInit {
                   VALUES (?, ?, ?, 'admin', ?)`)
         .run('admin', 'Admin', 'User', hash);
       this.logger.warn('Default admin created — username: admin / password: admin1234 — CHANGE IMMEDIATELY');
+    }
+  }
+
+  private ensureColumn(table: string, column: string, definition: string) {
+    const cols = this.db.prepare(`PRAGMA table_info(${table})`).all() as { name: string }[];
+    if (!cols.some((c) => c.name === column)) {
+      this.db.exec(`ALTER TABLE ${table} ADD COLUMN ${column} ${definition}`);
     }
   }
 }

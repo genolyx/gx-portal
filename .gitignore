@@ -1,7 +1,29 @@
+# Dependencies
 node_modules
+
+# Monorepo / tooling
 .turbo
+
+# Environment (secrets)
 .env
 .env.local
 .env.*.local
+
+# Build output
 dist
 .next
+*.tsbuildinfo
+
+# Portal SQLite runtime DB (USERS_DB_PATH — users.db / portal.db + WAL)
+apps/api/data/
+*.db
+*.db-shm
+*.db-wal
+
+# Logs
+*.log
+npm-debug.log*
+pnpm-debug.log*
+
+# OS / editor
+.DS_Store

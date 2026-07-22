@@ -1,32 +1,59 @@
-:root {
-  --bg: #0f1117;
-  --bg-surface: #1a1d27;
-  --bg-elevated: #232736;
-  --border: #2e3347;
-  --text-primary: #e8eaf0;
-  --text-secondary: #8b90a7;
-  --text-muted: #525775;
-  --accent: #5b7cf5;
-  --accent-hover: #7090ff;
-  --accent-dim: rgba(91, 124, 245, 0.15);
-  --success: #2fb67c;
-  --warning: #e8a04e;
-  --danger: #e05c6a;
-  --info: #4eb3e8;
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
 
+/* ══════════════════════════════════════════════
+   Design tokens — consumed by Tailwind (gx-*)
+   and by legacy CSS Modules
+   ══════════════════════════════════════════════ */
+
+:root,
+[data-theme='dark'] {
+  --bg:              #0f1117;
+  --bg-surface:      #1a1d27;
+  --bg-elevated:     #232736;
+  --border:          #2e3347;
+  --text-primary:    #e8eaf0;
+  --text-secondary:  #8b90a7;
+  --text-muted:      #525775;
+  --accent:          #5b7cf5;
+  --accent-hover:    #7090ff;
+  --accent-dim:      rgba(91, 124, 245, 0.15);
+  --success:         #2fb67c;
+  --warning:         #e8a04e;
+  --danger:          #e05c6a;
+  --info:            #4eb3e8;
   --radius-sm: 4px;
   --radius-md: 8px;
   --radius-lg: 12px;
-
   --shadow-sm: 0 1px 3px rgba(0,0,0,0.3);
   --shadow-md: 0 4px 12px rgba(0,0,0,0.4);
 }
 
-*, *::before, *::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
+[data-theme='light'] {
+  --bg:              #f4f5f8;
+  --bg-surface:      #ffffff;
+  --bg-elevated:     #eef1f6;
+  --border:          #d8dce6;
+  --text-primary:    #1a1d27;
+  --text-secondary:  #5c637a;
+  --text-muted:      #8b90a7;
+  --accent:          #4a6cf5;
+  --accent-hover:    #3558e0;
+  --accent-dim:      rgba(74, 108, 245, 0.12);
+  --success:         #1f9d62;
+  --warning:         #c47f2a;
+  --danger:          #c94452;
+  --info:            #2a9fd4;
+  --shadow-sm: 0 1px 3px rgba(0,0,0,0.08);
+  --shadow-md: 0 4px 12px rgba(0,0,0,0.1);
 }
+
+/* ══════════════════════════════════════════════
+   Global element styles
+   ══════════════════════════════════════════════ */
+
+*, *::before, *::after { box-sizing: border-box; }
 
 html, body {
   height: 100%;
@@ -38,14 +65,15 @@ html, body {
   -webkit-font-smoothing: antialiased;
 }
 
+/* Font size scale — controlled via data-font-size on <html> */
+[data-font-size='sm'] { font-size: 13px; }
+[data-font-size='md'] { font-size: 14px; }
+[data-font-size='lg'] { font-size: 15.5px; }
+
 a { color: var(--accent); text-decoration: none; }
 a:hover { color: var(--accent-hover); }
 
-button {
-  cursor: pointer;
-  font-family: inherit;
-  font-size: inherit;
-}
+button { cursor: pointer; font-family: inherit; font-size: inherit; }
 
 input, select, textarea {
   font-family: inherit;
@@ -58,38 +86,17 @@ input, select, textarea {
   outline: none;
   transition: border-color 0.15s;
 }
+input:focus, select:focus, textarea:focus { border-color: var(--accent); }
 
-input:focus, select:focus, textarea:focus {
-  border-color: var(--accent);
-}
-
-table {
-  border-collapse: collapse;
-  width: 100%;
-}
-
+table { border-collapse: collapse; width: 100%; }
 th {
-  text-align: left;
-  font-weight: 600;
-  color: var(--text-secondary);
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.05em;
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
+  text-align: left; font-weight: 600; color: var(--text-secondary);
+  font-size: 12px; text-transform: uppercase; letter-spacing: 0.05em;
+  padding: 8px 12px; border-bottom: 1px solid var(--border);
 }
+td { padding: 8px 12px; border-bottom: 1px solid var(--border); vertical-align: middle; }
+tr:hover td { background: var(--bg-elevated); }
 
-td {
-  padding: 8px 12px;
-  border-bottom: 1px solid var(--border);
-  vertical-align: middle;
-}
-
-tr:hover td {
-  background: var(--bg-elevated);
-}
-
-/* Scrollbar */
 ::-webkit-scrollbar { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track { background: transparent; }
 ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }

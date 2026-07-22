@@ -5,6 +5,7 @@ import type { Client, CreateClientDto, UpdateClientDto } from '@gx-portal/types'
 interface ClientRow {
   id: number;
   name: string;
+  order_prefix: string | null;
   address: string | null;
   email: string | null;
   phone: string | null;
@@ -50,13 +51,17 @@ export class ClientsService {
     const existing = this.db.db.prepare('SELECT id FROM clients WHERE name = ?').get(dto.name);
     if (existing) throw new ConflictException(`Client "${dto.name}" already exists`);
 
+    const prefix = normalizeOrderPrefix(dto.order_prefix);
+    if (prefix) assertPrefixAvailable(this.db.db, prefix);
+
     const result = this.db.db.prepare(`
       INSERT INTO clients
-        (name, address, email, phone, language, type, sequencing_data_method,
+        (name, order_prefix, address, email, phone, language, type, sequencing_data_method,
          is_managing_hospitals, auto_approve_orders, sign_report)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `).run(
       dto.name,
+      prefix,
       dto.address ?? null,
       dto.email ?? null,
       dto.phone ?? null,
@@ -80,6 +85,12 @@ export class ClientsService {
     const values: unknown[] = [];
 
     if (dto.name !== undefined)                    { fields.push('name = ?');                    values.push(dto.name); }
+    if (dto.order_prefix !== undefined) {
+      const prefix = normalizeOrderPrefix(dto.order_prefix);
+      if (prefix) assertPrefixAvailable(this.db.db, prefix, id);
+      fields.push('order_prefix = ?');
+      values.push(prefix);
+    }
     if (dto.address !== undefined)                 { fields.push('address = ?');                 values.push(dto.address); }
     if (dto.email !== undefined)                   { fields.push('email = ?');                   values.push(dto.email); }
     if (dto.phone !== undefined)                   { fields.push('phone = ?');                   values.push(dto.phone); }
@@ -117,6 +128,7 @@ export class ClientsService {
     return {
       id: row.id,
       name: row.name,
+      order_prefix: row.order_prefix ?? undefined,
       address: row.address ?? undefined,
       email: row.email ?? undefined,
       phone: row.phone ?? undefined,
@@ -129,5 +141,21 @@ export class ClientsService {
       service_codes: row.services ? row.services.split(',') : [],
       created_at: row.created_at,
     };
+  }
+}
+
+function normalizeOrderPrefix(raw?: string): string | null {
+  if (!raw) return null;
+  const p = raw.trim().toUpperCase();
+  if (!/^[A-Z]{2}$/.test(p)) {
+    throw new ConflictException('Order prefix must be exactly 2 letters (A–Z)');
+  }
+  return p;
+}
+
+function assertPrefixAvailable(db: DbService['db'], prefix: string, excludeId?: number) {
+  const row = db.prepare('SELECT id FROM clients WHERE order_prefix = ?').get(prefix) as { id: number } | undefined;
+  if (row && row.id !== excludeId) {
+    throw new ConflictException(`Order prefix "${prefix}" is already in use`);
   }
 }

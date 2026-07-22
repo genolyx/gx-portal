@@ -30,6 +30,7 @@ export const ordersApi = {
   reprocess: (id: string) => api.post<Order>(`/orders/${id}/reprocess-results`),
   deleteRun: (id: string) => api.post<Order>(`/orders/${id}/delete-run`),
   purgeDb: (id: string) => api.post<Order>(`/orders/${id}/purge-db`),
-  getFiles: (id: string) => api.get<unknown>(`/orders/${id}/files`),
+  getFiles: (id: string) => api.get<{ files: { name: string; size: number; mtime_ms: number; type: string }[] }>(`/orders/${id}/files`),
+  getOutputFileUrl: (id: string, filename: string) => `/api/orders/${id}/output/${encodeURIComponent(filename)}`,
   getLog: (id: string) => api.get<string>(`/orders/${id}/pipeline-log`),
 };

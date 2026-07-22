@@ -4,6 +4,8 @@ export type SequencingDataMethod = 'Remote' | 'Local';
 export interface Client {
   id: number;
   name: string;
+  /** Two-letter order ID prefix, e.g. GX for Genolyx */
+  order_prefix?: string;
   address?: string;
   email?: string;
   phone?: string;
@@ -19,6 +21,7 @@ export interface Client {
 
 export interface CreateClientDto {
   name: string;
+  order_prefix?: string;
   address?: string;
   email?: string;
   phone?: string;

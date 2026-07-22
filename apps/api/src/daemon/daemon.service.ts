@@ -4,20 +4,34 @@ import { ConfigService } from '@nestjs/config';
 @Injectable()
 export class DaemonService {
   private readonly logger = new Logger(DaemonService.name);
-  private readonly baseUrl: string;
-  private readonly apiKey: string | undefined;
+  private _baseUrl: string;
+  private _apiKey: string | undefined;
 
   constructor(private readonly config: ConfigService) {
-    this.baseUrl = config.get<string>('DAEMON_URL', 'http://localhost:8010');
-    this.apiKey = config.get<string>('DAEMON_API_KEY');
+    this._baseUrl = config.get<string>('DAEMON_URL', 'http://localhost:8010');
+    this._apiKey = config.get<string>('DAEMON_API_KEY');
+  }
+
+  /** Update daemon URL (and optionally API key) at runtime */
+  setDaemonUrl(url: string, apiKey?: string) {
+    this._baseUrl = url.replace(/\/$/, '');
+    if (apiKey !== undefined) this._apiKey = apiKey || undefined;
+    this.logger.log(`Daemon URL updated → ${this._baseUrl}`);
+  }
+
+  getConfig() {
+    return {
+      daemonUrl: this._baseUrl,
+      hasApiKey: Boolean(this._apiKey),
+    };
   }
 
   private buildHeaders(): Record<string, string> {
     const headers: Record<string, string> = {
       'Content-Type': 'application/json',
     };
-    if (this.apiKey) {
-      headers['X-API-Key'] = this.apiKey;
+    if (this._apiKey) {
+      headers['X-API-Key'] = this._apiKey;
     }
     return headers;
   }
@@ -28,7 +42,7 @@ export class DaemonService {
     body?: unknown,
     query?: Record<string, string | number | boolean | undefined>,
   ): Promise<T> {
-    let url = `${this.baseUrl}${path}`;
+    let url = `${this._baseUrl}${path}`;
 
     if (query) {
       const params = new URLSearchParams();

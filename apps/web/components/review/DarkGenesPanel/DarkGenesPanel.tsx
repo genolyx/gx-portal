@@ -2,154 +2,145 @@
 
 import { useState } from 'react';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import { Badge } from '../../ui/Badge';
 import styles from './DarkGenesPanel.module.css';
 
-type DarkGeneSection = 'smn' | 'cftr' | 'apoe' | 'other';
+interface DetailedSection {
+  title?: string;
+  body?: string;
+  kind?: string;
+  [key: string]: unknown;
+}
+
+interface CftrIvs9Eh {
+  display_t?: string;
+  display_tg?: string;
+  per_allele_summary?: string;
+  risk_level?: string;
+  risk_reasons?: string[];
+  locus_note?: string;
+  [key: string]: unknown;
+}
 
 export function DarkGenesPanel() {
   const { reviewData } = useReviewStore();
-  const [activeSection, setActiveSection] = useState<DarkGeneSection>('smn');
-  const [igvUrl, setIgvUrl] = useState<string | null>(null);
+  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
 
   const dark = reviewData?.dark_genes;
+
   if (!dark) {
     return <p className={styles.empty}>No dark gene data available for this order.</p>;
   }
 
-  const sections: { id: DarkGeneSection; label: string; available: boolean }[] = [
-    { id: 'smn',   label: 'SMN (SMA)',  available: Boolean(dark.smn) },
-    { id: 'cftr',  label: 'CFTR',       available: Boolean(dark.cftr) },
-    { id: 'apoe',  label: 'APOE',       available: Boolean(dark.apoe) },
-    { id: 'other', label: 'Other Genes', available: Boolean(dark.sections?.length) },
-  ];
+  const hasData = dark.status === 'found' || dark.summary_text || dark.detailed_sections?.length;
+  if (!hasData && !dark.smn && !dark.cftr && !dark.apoe) {
+    return (
+      <div className={styles.noData}>
+        <p>Dark gene analysis was not performed or produced no results for this order.</p>
+        {dark.status && <p className={styles.hint}>Status: {String(dark.status)}</p>}
+      </div>
+    );
+  }
+
+  const sections  = (dark.detailed_sections ?? []) as DetailedSection[];
+  const cftrEh    = dark.cftr_ivs9_eh as CftrIvs9Eh | undefined;
+  const ve        = dark.visual_evidence ?? {};
+  const igvHtml   = typeof ve.igv_report_html === 'string' ? ve.igv_report_html : undefined;
+
+  const toggleSection = (i: number) => {
+    setExpanded((prev) => {
+      const next = new Set(prev);
+      if (next.has(i)) next.delete(i); else next.add(i);
+      return next;
+    });
+  };
+
+  const kindClass = (kind?: string) => {
+    if (!kind || kind === 'normal') return '';
+    if (kind === 'warn')  return styles.secWarn;
+    if (kind === 'alert') return styles.secAlert;
+    if (kind === 'ok')    return styles.secOk;
+    return '';
+  };
 
   return (
     <div className={styles.wrap}>
-      <div className={styles.tabs}>
-        {sections.map((s) => (
-          <button
-            key={s.id}
-            className={`${styles.tab} ${activeSection === s.id ? styles.active : ''} ${!s.available ? styles.disabled : ''}`}
-            onClick={() => s.available && setActiveSection(s.id)}
-          >
-            {s.label}
-            {!s.available && <span className={styles.na}> N/A</span>}
-          </button>
-        ))}
-      </div>
+      {/* Summary header */}
+      {dark.summary_text && (
+        <details className={styles.summaryDetails}>
+          <summary className={styles.summarySummary}>Summary table</summary>
+          <pre className={styles.summaryPre}>{String(dark.summary_text)}</pre>
+        </details>
+      )}
 
-      <div className={styles.content}>
-        {activeSection === 'smn' && dark.smn && (
-          <SmnSection smn={dark.smn} onIgv={setIgvUrl} />
-        )}
-        {activeSection === 'cftr' && dark.cftr && (
-          <CftrSection cftr={dark.cftr} onIgv={setIgvUrl} />
-        )}
-        {activeSection === 'apoe' && dark.apoe && (
-          <ApoeSection apoe={dark.apoe} onIgv={setIgvUrl} />
-        )}
-        {activeSection === 'other' && dark.sections && (
-          <OtherSection sections={dark.sections} onIgv={setIgvUrl} />
-        )}
-      </div>
-
-      {igvUrl && (
-        <div className={styles.igvOverlay}>
-          <div className={styles.igvHeader}>
-            <span>IGV Report</span>
-            <button onClick={() => setIgvUrl(null)} className={styles.igvClose}>✕</button>
+      {/* CFTR IVS9 EH result */}
+      {cftrEh && (
+        <div className={`${styles.cftrCard} ${cftrEh.risk_level === 'high' ? styles.secAlert : cftrEh.risk_level === 'medium' ? styles.secWarn : styles.secOk}`}>
+          <h3 className={styles.sectionTitle}>CFTR IVS9 (poly-T / TG) — Expansion Hunter</h3>
+          <div className={styles.kvGrid}>
+            {cftrEh.display_t    && <><dt>Poly-T</dt><dd>{cftrEh.display_t}</dd></>}
+            {cftrEh.display_tg   && <><dt>TG repeat</dt><dd>{cftrEh.display_tg}</dd></>}
+            {cftrEh.per_allele_summary && <><dt>Allele summary</dt><dd>{cftrEh.per_allele_summary}</dd></>}
+            {cftrEh.risk_level   && <><dt>Risk level</dt><dd className={cftrEh.risk_level === 'high' ? styles.textErr : cftrEh.risk_level === 'medium' ? styles.textWarn : styles.textOk}>{cftrEh.risk_level.toUpperCase()}</dd></>}
+            {cftrEh.risk_reasons && cftrEh.risk_reasons.length > 0 && (
+              <><dt>Risk reasons</dt><dd>{cftrEh.risk_reasons.join('; ')}</dd></>
+            )}
           </div>
-          <iframe src={igvUrl} className={styles.igvFrame} title="IGV Report" />
+          {cftrEh.locus_note && <p className={styles.hint}>{String(cftrEh.locus_note)}</p>}
         </div>
       )}
-    </div>
-  );
-}
 
-function ResultRow({ label, value }: { label: string; value?: string | number | null }) {
-  return (
-    <div className={styles.resultRow}>
-      <span className={styles.resultLabel}>{label}</span>
-      <span className={styles.resultValue}>{value ?? '—'}</span>
-    </div>
-  );
-}
-
-function IgvButton({ url, onClick }: { url?: string; onClick: (url: string) => void }) {
-  if (!url) return null;
-  return (
-    <button className={styles.igvBtn} onClick={() => onClick(url)}>
-      Open IGV Report
-    </button>
-  );
-}
-
-function SmnSection({ smn, onIgv }: { smn: NonNullable<ReturnType<typeof useReviewStore>['reviewData']>['dark_genes']['smn']; onIgv: (url: string) => void }) {
-  if (!smn) return null;
-  return (
-    <div className={styles.section}>
-      <h3 className={styles.sectionTitle}>SMN1 / SMN2 Copy Number</h3>
-      <div className={styles.resultGrid}>
-        <ResultRow label="SMN1 copies" value={smn.smn1_copies} />
-        <ResultRow label="SMN1 confidence" value={smn.smn1_confidence} />
-        <ResultRow label="SMN2 copies" value={smn.smn2_copies} />
-        <ResultRow label="SMN2 confidence" value={smn.smn2_confidence} />
-      </div>
-      <IgvButton url={smn.igv_report_html} onClick={onIgv} />
-    </div>
-  );
-}
-
-function CftrSection({ cftr, onIgv }: { cftr: NonNullable<ReturnType<typeof useReviewStore>['reviewData']>['dark_genes']['cftr']; onIgv: (url: string) => void }) {
-  if (!cftr) return null;
-  return (
-    <div className={styles.section}>
-      <h3 className={styles.sectionTitle}>CFTR Analysis</h3>
-      {cftr.ivs9_result && <ResultRow label="IVS9 Result" value={cftr.ivs9_result} />}
-      {cftr.variants && cftr.variants.length > 0 && (
-        <div className={styles.variantList}>
-          {cftr.variants.map((v, i) => (
-            <Badge key={i} variant="warning">{v.gene} {v.hgvsc ?? `${v.ref}>${v.alt}`}</Badge>
+      {/* Detailed sections */}
+      {sections.length > 0 && (
+        <div className={styles.sectionsStack}>
+          {sections.map((s, i) => (
+            <div key={i} className={`${styles.secCard} ${kindClass(s.kind)}`}>
+              <div
+                className={styles.secHeader}
+                onClick={() => toggleSection(i)}
+              >
+                <span className={styles.secTitleText}>{s.title ?? `Section ${i + 1}`}</span>
+                <span className={styles.secToggle}>{expanded.has(i) ? '▲' : '▼'}</span>
+              </div>
+              {expanded.has(i) && s.body && (
+                <pre className={styles.secBody}>{String(s.body)}</pre>
+              )}
+            </div>
           ))}
         </div>
       )}
-      <IgvButton url={cftr.igv_report_html} onClick={onIgv} />
+
+      {/* IGV report link */}
+      {igvHtml && (
+        <div style={{ marginTop: 16 }}>
+          <a
+            href={igvHtml}
+            target="_blank"
+            rel="noreferrer"
+            className={styles.igvLink}
+          >
+            Open IGV Visual Evidence Report ↗
+          </a>
+        </div>
+      )}
+
+      {/* Legacy support: smn/cftr/apoe objects */}
+      {dark.smn && !sections.length && (
+        <LegacySmnSection smn={dark.smn as Record<string, unknown>} />
+      )}
     </div>
   );
 }
 
-function ApoeSection({ apoe, onIgv }: { apoe: NonNullable<ReturnType<typeof useReviewStore>['reviewData']>['dark_genes']['apoe']; onIgv: (url: string) => void }) {
-  if (!apoe) return null;
+function LegacySmnSection({ smn }: { smn: Record<string, unknown> }) {
   return (
-    <div className={styles.section}>
-      <h3 className={styles.sectionTitle}>APOE Genotyping</h3>
-      <div className={styles.resultGrid}>
-        <ResultRow label="Genotype" value={apoe.genotype} />
-        <ResultRow label="Haplotype 1" value={apoe.haplotype1} />
-        <ResultRow label="Haplotype 2" value={apoe.haplotype2} />
-      </div>
-      <IgvButton url={apoe.igv_report_html} onClick={onIgv} />
-    </div>
-  );
-}
-
-function OtherSection({ sections, onIgv }: { sections: unknown[]; onIgv: (url: string) => void }) {
-  return (
-    <div className={styles.section}>
-      <h3 className={styles.sectionTitle}>Other Dark Gene Sections</h3>
-      {sections.map((s, i) => {
-        const section = s as { gene?: string; result?: unknown; visual_evidence?: { igv_report_html?: string } };
-        return (
-          <div key={i} className={styles.otherSection}>
-            <h4 className={styles.geneTitle}>{section.gene ?? `Section ${i + 1}`}</h4>
-            <pre className={styles.pre}>{JSON.stringify(section.result, null, 2)}</pre>
-            {section.visual_evidence?.igv_report_html && (
-              <IgvButton url={section.visual_evidence.igv_report_html} onClick={onIgv} />
-            )}
-          </div>
-        );
-      })}
+    <div>
+      <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>SMN1 / SMN2 Copy Number</h3>
+      <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: 12 }}>
+        {Object.entries(smn).filter(([, v]) => typeof v !== 'object').map(([k, v]) => (
+          <><dt key={`dt-${k}`} style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{k}</dt>
+          <dd key={`dd-${k}`} style={{ margin: 0 }}>{String(v)}</dd></>
+        ))}
+      </dl>
     </div>
   );
 }
