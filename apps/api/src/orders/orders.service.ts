@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { HttpException, Injectable, NotFoundException } from '@nestjs/common';
 import { DaemonService } from '../daemon/daemon.service';
 import { OrderRegistryService, RequestUser } from './order-registry.service';
 import type {
@@ -29,10 +29,38 @@ export class OrdersService {
     return this.registry.filterOrderList(resp, user);
   }
 
-  async getOrder(id: string, user?: RequestUser): Promise<Order> {
-    const canonicalId = this.registry.resolveCanonicalOrderId(id);
+  private isNotFound(err: unknown): boolean {
+    return err instanceof HttpException && err.getStatus() === 404;
+  }
+
+  private orderPath(daemonOrderId: string, suffix = ''): string {
+    return `/order/${encodeURIComponent(daemonOrderId)}${suffix}`;
+  }
+
+  /** gx-daemon may still use legacy_order_id when portal display id was migrated separately. */
+  private async withDaemonOrderId<T>(
+    portalOrderId: string,
+    user: RequestUser | undefined,
+    fn: (daemonOrderId: string) => Promise<T>,
+  ): Promise<T> {
+    const canonicalId = this.registry.resolveCanonicalOrderId(portalOrderId);
     this.registry.assertCanAccess(canonicalId, user);
-    const order = await this.daemon.get<Order>(`/order/${canonicalId}`);
+    const legacyId = this.registry.getMeta(canonicalId)?.legacy_order_id ?? undefined;
+
+    try {
+      return await fn(canonicalId);
+    } catch (err) {
+      if (legacyId && legacyId !== canonicalId && this.isNotFound(err)) {
+        return await fn(legacyId);
+      }
+      throw err;
+    }
+  }
+
+  async getOrder(id: string, user?: RequestUser): Promise<Order> {
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.get<Order>(this.orderPath(daemonId)),
+    );
     return this.registry.enrichOrder(order);
   }
 
@@ -72,10 +100,11 @@ export class OrdersService {
     body: Partial<OrderCreateBody>,
     user?: RequestUser,
   ): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
     const patch = { ...body };
     delete (patch as Record<string, unknown>).client_id;
-    const order = await this.daemon.patch<Order>(`/order/${id}`, patch);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.patch<Order>(this.orderPath(daemonId), patch),
+    );
     return this.registry.enrichOrder(order);
   }
 
@@ -84,43 +113,50 @@ export class OrdersService {
     options?: { fresh?: boolean; force?: boolean },
     user?: RequestUser,
   ): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
-    const order = await this.daemon.post<Order>(`/order/${id}/start`, options);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post<Order>(this.orderPath(daemonId, '/start'), options),
+    );
     return this.registry.enrichOrder(order);
   }
 
   async stopOrder(id: string, user?: RequestUser): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
-    const order = await this.daemon.post<Order>(`/order/${id}/stop`);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post<Order>(this.orderPath(daemonId, '/stop')),
+    );
     return this.registry.enrichOrder(order);
   }
 
   async reprocessResults(id: string, user?: RequestUser): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
-    const order = await this.daemon.post<Order>(`/order/${id}/reprocess-results`);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post<Order>(this.orderPath(daemonId, '/reprocess-results')),
+    );
     return this.registry.enrichOrder(order);
   }
 
   async deleteRun(id: string, user?: RequestUser): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
-    const order = await this.daemon.post<Order>(`/order/${id}/delete-run`);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post<Order>(this.orderPath(daemonId, '/delete-run')),
+    );
     return this.registry.enrichOrder(order);
   }
 
   async purgeDb(id: string, user?: RequestUser): Promise<Order> {
-    this.registry.assertCanAccess(id, user);
-    const order = await this.daemon.post<Order>(`/order/${id}/purge-db`);
+    const order = await this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post<Order>(this.orderPath(daemonId, '/purge-db')),
+    );
     return this.registry.enrichOrder(order);
   }
 
   async getFiles(id: string, user?: RequestUser): Promise<unknown> {
-    this.registry.assertCanAccess(id, user);
-    return this.daemon.get(`/order/${id}/files`);
+    return this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.get(this.orderPath(daemonId, '/files')),
+    );
   }
 
   async getPipelineLog(id: string, user?: RequestUser): Promise<string> {
-    this.registry.assertCanAccess(id, user);
-    return this.daemon.get(`/order/${id}/pipeline-log`);
+    return this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.get(this.orderPath(daemonId, '/pipeline-log')),
+    );
   }
 
   async getOutputFile(
@@ -181,7 +217,8 @@ export class OrdersService {
   }
 
   submitToPlatform(serviceCode: string, id: string, body: unknown, user?: RequestUser): Promise<unknown> {
-    this.registry.assertCanAccess(id, user);
-    return this.daemon.post(`/analysis/${serviceCode}/order/${id}/submit`, body);
+    return this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.post(`/analysis/${encodeURIComponent(serviceCode)}/order/${encodeURIComponent(daemonId)}/submit`, body),
+    );
   }
 }

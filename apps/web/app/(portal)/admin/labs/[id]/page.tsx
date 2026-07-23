@@ -1,5 +1,6 @@
 import { LabFormPage } from '../../../../../components/admin/labs/LabFormPage';
 
-export default function LabDetailPage({ params }: { params: { id: string } }) {
-  return <LabFormPage id={params.id} />;
+export default async function LabDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <LabFormPage id={id} />;
 }

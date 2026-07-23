@@ -3,7 +3,22 @@ import { api } from './client';
 export const systemApi = {
   health:    () => api.get<unknown>('/system/health'),
   queue:     () => api.get<unknown>('/system/queue'),
-  dashboard: () => api.get<unknown>('/system/dashboard'),
+  dashboardBucket: (params: {
+    bucket: string;
+    sort?: string;
+    order?: 'asc' | 'desc';
+    service_code?: string;
+  }) => {
+    const qs = new URLSearchParams({ bucket: params.bucket });
+    if (params.sort) qs.set('sort', params.sort);
+    if (params.order) qs.set('order', params.order);
+    if (params.service_code) qs.set('service_code', params.service_code);
+    return api.get<{
+      bucket: string;
+      total: number;
+      orders: { order_id: string; status: string; order_updated?: string; message?: string }[];
+    }>(`/system/dashboard/bucket?${qs.toString()}`);
+  },
   services:  () => api.get<unknown>('/system/services'),
   resources: () => api.get<unknown>('/system/resources'),
   log: (lines = 200) => api.get<unknown>(`/system/log?lines=${lines}`),
@@ -18,4 +33,6 @@ export const systemApi = {
 
   testConnection: () =>
     api.get<unknown>('/system/health'),
+
+  hostResources: () => api.get<unknown>('/system/host-resources'),
 };

@@ -36,6 +36,66 @@ export class OrdersController {
     return this.ordersService.listOrders(query, this.user(req));
   }
 
+  @Get(':id/files')
+  @ApiOperation({ summary: 'List order output files' })
+  getFiles(@Param('id') id: string, @Req() req: Request) {
+    return this.ordersService.getFiles(id, this.user(req));
+  }
+
+  @Get(':id/pipeline-log')
+  @ApiOperation({ summary: 'Get pipeline log (plain text)' })
+  async getLog(
+    @Param('id') id: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    const text = await this.ordersService.getPipelineLog(id, this.user(req));
+    res.setHeader('Content-Type', 'text/plain; charset=utf-8');
+    res.send(text);
+  }
+
+  @Get(':id/bam-context')
+  @ApiOperation({ summary: 'Discover BAM/CRAM file in order output directory for IGV' })
+  getBamContext(@Param('id') id: string, @Req() req: Request) {
+    return this.ordersService.getBamContext(id, this.user(req));
+  }
+
+  @Get(':id/output/:filename')
+  @ApiOperation({ summary: 'Download / stream output file (supports HTTP Range for BAM)' })
+  async downloadFile(
+    @Param('id') id: string,
+    @Param('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+    @Headers('range') rangeHeader?: string,
+  ) {
+    const { filePath, mimeType } = await this.ordersService.getOutputFile(id, filename, this.user(req));
+    const stat = statSync(filePath);
+    const total = stat.size;
+
+    res.setHeader('Accept-Ranges', 'bytes');
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Access-Control-Allow-Origin', '*');
+    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges');
+
+    if (rangeHeader) {
+      const [startStr, endStr] = rangeHeader.replace(/bytes=/, '').split('-');
+      const start = parseInt(startStr, 10);
+      const end   = endStr ? parseInt(endStr, 10) : total - 1;
+      const chunkSize = end - start + 1;
+
+      res.status(206);
+      res.setHeader('Content-Range',  `bytes ${start}-${end}/${total}`);
+      res.setHeader('Content-Length', String(chunkSize));
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      createReadStream(filePath, { start, end }).pipe(res);
+    } else {
+      res.setHeader('Content-Length', String(total));
+      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
+      createReadStream(filePath).pipe(res);
+    }
+  }
+
   @Get(':id')
   @ApiOperation({ summary: 'Get single order' })
   getOne(@Param('id') id: string, @Req() req: Request) {
@@ -94,60 +154,6 @@ export class OrdersController {
   @ApiOperation({ summary: 'Purge order from DB' })
   purgeDb(@Param('id') id: string, @Req() req: Request) {
     return this.ordersService.purgeDb(id, this.user(req));
-  }
-
-  @Get(':id/files')
-  @ApiOperation({ summary: 'List order output files' })
-  getFiles(@Param('id') id: string, @Req() req: Request) {
-    return this.ordersService.getFiles(id, this.user(req));
-  }
-
-  @Get(':id/pipeline-log')
-  @ApiOperation({ summary: 'Get pipeline log' })
-  getLog(@Param('id') id: string, @Req() req: Request) {
-    return this.ordersService.getPipelineLog(id, this.user(req));
-  }
-
-  @Get(':id/bam-context')
-  @ApiOperation({ summary: 'Discover BAM/CRAM file in order output directory for IGV' })
-  getBamContext(@Param('id') id: string, @Req() req: Request) {
-    return this.ordersService.getBamContext(id, this.user(req));
-  }
-
-  @Get(':id/output/:filename')
-  @ApiOperation({ summary: 'Download / stream output file (supports HTTP Range for BAM)' })
-  async downloadFile(
-    @Param('id') id: string,
-    @Param('filename') filename: string,
-    @Req() req: Request,
-    @Res() res: Response,
-    @Headers('range') rangeHeader?: string,
-  ) {
-    const { filePath, mimeType } = await this.ordersService.getOutputFile(id, filename, this.user(req));
-    const stat = statSync(filePath);
-    const total = stat.size;
-
-    res.setHeader('Accept-Ranges', 'bytes');
-    res.setHeader('Content-Type', mimeType);
-    res.setHeader('Access-Control-Allow-Origin', '*');
-    res.setHeader('Access-Control-Expose-Headers', 'Content-Range, Accept-Ranges');
-
-    if (rangeHeader) {
-      const [startStr, endStr] = rangeHeader.replace(/bytes=/, '').split('-');
-      const start = parseInt(startStr, 10);
-      const end   = endStr ? parseInt(endStr, 10) : total - 1;
-      const chunkSize = end - start + 1;
-
-      res.status(206);
-      res.setHeader('Content-Range',  `bytes ${start}-${end}/${total}`);
-      res.setHeader('Content-Length', String(chunkSize));
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      createReadStream(filePath, { start, end }).pipe(res);
-    } else {
-      res.setHeader('Content-Length', String(total));
-      res.setHeader('Content-Disposition', `inline; filename="${filename}"`);
-      createReadStream(filePath).pipe(res);
-    }
   }
 
   @Post('analysis/:serviceCode/:id/submit')

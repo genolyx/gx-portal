@@ -13,8 +13,17 @@ export class SystemService {
     return this.daemon.get('/queue/summary');
   }
 
-  dashboardBucket(): Promise<unknown> {
-    return this.daemon.get('/queue/dashboard-bucket');
+  dashboardBucket(query: {
+    bucket: string;
+    sort?: string;
+    order?: 'asc' | 'desc';
+    service_code?: string;
+  }): Promise<unknown> {
+    const params = new URLSearchParams({ bucket: query.bucket });
+    if (query.sort) params.set('sort', query.sort);
+    if (query.order) params.set('order', query.order);
+    if (query.service_code) params.set('service_code', query.service_code);
+    return this.daemon.get(`/queue/dashboard-bucket?${params.toString()}`);
   }
 
   services(): Promise<unknown> {

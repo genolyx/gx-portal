@@ -1,11 +1,16 @@
-import { Controller, Get, Put, Body, Query } from '@nestjs/common';
+import { Controller, Get, Put, Body, Query, UseGuards } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { SystemService } from './system.service';
+import { HostResourcesService } from './host-resources.service';
+import { AdminGuard } from '../auth/guards/admin.guard';
 
 @ApiTags('system')
 @Controller('system')
 export class SystemController {
-  constructor(private readonly systemService: SystemService) {}
+  constructor(
+    private readonly systemService: SystemService,
+    private readonly hostResourcesService: HostResourcesService,
+  ) {}
 
   @Get('health')
   @ApiOperation({ summary: 'Gx-portal + daemon health check' })
@@ -20,10 +25,20 @@ export class SystemController {
     return this.systemService.queueSummary();
   }
 
-  @Get('dashboard')
-  @ApiOperation({ summary: 'Dashboard bucket stats' })
-  dashboard() {
-    return this.systemService.dashboardBucket();
+  @Get('dashboard/bucket')
+  @ApiOperation({ summary: 'Orders in a dashboard status bucket' })
+  dashboardBucket(
+    @Query('bucket') bucket: string,
+    @Query('sort') sort?: string,
+    @Query('order') order?: 'asc' | 'desc',
+    @Query('service_code') serviceCode?: string,
+  ) {
+    return this.systemService.dashboardBucket({
+      bucket,
+      sort,
+      order,
+      service_code: serviceCode,
+    });
   }
 
   @Get('services')
@@ -73,5 +88,12 @@ export class SystemController {
   @ApiOperation({ summary: 'List available Ollama models from daemon' })
   getOllamaModels() {
     return this.systemService.getOllamaModels();
+  }
+
+  @Get('host-resources')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Host CPU / memory / disk metrics (admin only)' })
+  getHostResources() {
+    return this.hostResourcesService.getAll();
   }
 }

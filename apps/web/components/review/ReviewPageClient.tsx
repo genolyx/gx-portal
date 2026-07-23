@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from 'react';
 import { reviewApi } from '../../lib/api/review';
+import { formatPortalDateTime } from '../../lib/datetime';
 import { useReviewStore } from '../../lib/store/reviewStore';
 import { PageHeader } from '../ui/PageHeader';
 import { VariantTable } from './VariantTable/VariantTable';
@@ -170,7 +171,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
   const sampleName   = String(reviewData.sample_name ?? orderId);
   const qcSummary    = reviewData.qc_summary as QcSummary | undefined;
   const variantStats = reviewData.variant_stats as VariantStats | undefined;
-  const generatedAt  = reviewData.generated_at ? new Date(String(reviewData.generated_at)).toLocaleString() : '';
+  const generatedAt  = reviewData.generated_at ? formatPortalDateTime(String(reviewData.generated_at), '') : '';
 
   return (
     <div>

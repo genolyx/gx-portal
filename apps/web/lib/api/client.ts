@@ -30,6 +30,11 @@ async function request<T>(
       const json = JSON.parse(text) as { message?: string };
       message = json.message ?? text;
     } catch {}
+    // 401: token expired → redirect to login
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+      return undefined as T;
+    }
     throw new ApiError(res.status, message || `HTTP ${res.status}`);
   }
 
@@ -37,8 +42,32 @@ async function request<T>(
   return res.json() as Promise<T>;
 }
 
+async function requestText(path: string): Promise<string> {
+  const res = await fetch(`${API_BASE}${path}`, {
+    method: 'GET',
+    credentials: 'include',
+  });
+
+  if (!res.ok) {
+    const text = await res.text().catch(() => '');
+    let message = text;
+    try {
+      const json = JSON.parse(text) as { message?: string };
+      message = json.message ?? text;
+    } catch {}
+    if (res.status === 401 && typeof window !== 'undefined') {
+      window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
+      return '';
+    }
+    throw new ApiError(res.status, message || `HTTP ${res.status}`);
+  }
+
+  return res.text();
+}
+
 export const api = {
   get: <T>(path: string) => request<T>('GET', path),
+  getText: (path: string) => requestText(path),
   post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
   put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
   patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),

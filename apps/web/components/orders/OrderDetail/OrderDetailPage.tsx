@@ -2,12 +2,19 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { ReportDownloadLink } from '../ReportDownloadLink';
+import { reportLangLabel } from '../../../lib/report-downloads';
 import { ordersApi } from '../../../lib/api/orders';
+import { ApiError } from '../../../lib/api/client';
 import { PageHeader } from '../../ui/PageHeader';
 import { Button } from '../../ui/Button';
 import { OrderStatusBadge } from '../../ui/Badge';
 import type { Order } from '@gx-portal/types';
 import { cn } from '../../../lib/utils';
+import {
+  formatPortalDate,
+  formatPortalDateTimeDetail,
+} from '../../../lib/datetime';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -18,18 +25,11 @@ type P = Record<string, unknown>;
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDt(iso?: string | null) {
-  if (!iso || iso === 'null') return '—';
-  try {
-    return new Date(iso).toLocaleString('ko-KR', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit', second: '2-digit',
-    });
-  } catch { return iso; }
+  return formatPortalDateTimeDetail(iso);
 }
 
 function fmtDate(val?: string | null) {
-  if (!val) return '—';
-  try { return new Date(val).toLocaleDateString('ko-KR'); } catch { return val; }
+  return formatPortalDate(val);
 }
 
 function strVal(v: unknown, isDate = false): string {
@@ -156,27 +156,18 @@ function ReportFilesSection({ orderId, status }: { orderId: string; status: stri
       <div className="flex flex-wrap gap-2">
         {reportFiles.map(f => {
           const isPdf = /\.pdf$/i.test(f.name);
-          const langM = f.name.match(/_([A-Z]{2,3})\.(pdf|html)$/i);
-          const lang = langM ? langM[1].toUpperCase() : '?';
+          const lang = reportLangLabel(f.name);
           const label = `${isPdf ? 'PDF' : 'HTML'} ${lang}`;
           return (
-            <a
+            <ReportDownloadLink
               key={f.name}
-              href={ordersApi.getOutputFileUrl(orderId, f.name)}
-              target="_blank"
-              rel="noreferrer"
-              className={cn(
-                'inline-flex items-center gap-1.5 px-3 py-1.5 rounded-gx-sm border text-xs font-semibold transition-all',
-                isPdf
-                  ? 'bg-gx-danger/10 text-gx-danger border-gx-danger/30 hover:bg-gx-danger/20'
-                  : 'bg-gx-info/10 text-gx-info border-gx-info/30 hover:bg-gx-info/20',
-              )}
-              title={f.name}
-            >
-              <span>↓</span>
-              <span>{label}</span>
-              <span className="text-[10px] opacity-60 font-normal">{f.name}</span>
-            </a>
+              orderId={orderId}
+              filename={f.name}
+              label={label}
+              kind={isPdf ? 'pdf' : 'html'}
+              size="md"
+              showFilename
+            />
           );
         })}
       </div>
@@ -309,16 +300,56 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
   const [open, setOpen]   = useState(false);
   const [log, setLog]     = useState('');
   const [loading, setLoading] = useState(false);
+  const [copyHint, setCopyHint] = useState<string | null>(null);
   const preRef = useRef<HTMLPreElement>(null);
   const intervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined);
+  const copyHintTimerRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
+
+  const activeForPoll = ['QUEUED', 'RUNNING', 'RECEIVED', 'DOWNLOADING', 'PROCESSING', 'UPLOADING'];
+
+  const showCopyHint = useCallback((text: string) => {
+    setCopyHint(`✔ Copied ${text.length} chars`);
+    if (copyHintTimerRef.current) clearTimeout(copyHintTimerRef.current);
+    copyHintTimerRef.current = setTimeout(() => setCopyHint(null), 1400);
+  }, []);
+
+  const handleLogMouseUp = useCallback(() => {
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return;
+    const text = sel.toString();
+    if (!text) return;
+
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(text)
+        .then(() => showCopyHint(text))
+        .catch(() => {
+          try {
+            document.execCommand('copy');
+            showCopyHint(text);
+          } catch { /* ignore */ }
+        });
+      return;
+    }
+    try {
+      document.execCommand('copy');
+      showCopyHint(text);
+    } catch { /* ignore */ }
+  }, [showCopyHint]);
+
+  useEffect(() => () => {
+    if (copyHintTimerRef.current) clearTimeout(copyHintTimerRef.current);
+  }, []);
 
   const fetchLog = useCallback(async () => {
     try {
       const text = await ordersApi.getLog(orderId);
-      setLog(typeof text === 'string' ? text : JSON.stringify(text));
+      setLog(text || '(empty)');
       if (preRef.current) preRef.current.scrollTop = preRef.current.scrollHeight;
-    } catch {
-      setLog('(Log unavailable)');
+    } catch (e) {
+      const msg = e instanceof ApiError ? e.message : 'Failed to load log';
+      setLog(msg.includes('not found') || msg.includes('404')
+        ? `${msg}\n\nPipeline may still be starting — try Refresh in a few seconds.`
+        : msg);
     } finally {
       setLoading(false);
     }
@@ -331,25 +362,47 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
     }
     setLoading(true);
     fetchLog();
-    const active = ['QUEUED', 'RUNNING'].includes(status);
-    if (active) {
-      intervalRef.current = setInterval(fetchLog, 5000);
+    if (activeForPoll.includes(status)) {
+      intervalRef.current = setInterval(fetchLog, 4000);
     }
     return () => clearInterval(intervalRef.current);
   }, [open, fetchLog, status]);
 
   return (
+    <>
     <div className="border border-gx-border rounded-gx overflow-hidden">
-      <button
-        type="button"
-        onClick={() => setOpen(v => !v)}
-        className="w-full flex items-center justify-between px-4 py-2.5 bg-gx-elevated hover:bg-gx-elevated/80 transition-colors text-left"
-      >
-        <span className="text-xs font-semibold text-gx-text-2 uppercase tracking-wide">
-          Pipeline Log
-        </span>
-        <span className="text-[11px] text-gx-muted">{open ? '▲ collapse' : '▼ expand'}</span>
-      </button>
+      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gx-elevated">
+        <button
+          type="button"
+          onClick={() => setOpen(v => !v)}
+          className="min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
+        >
+          <span className="text-xs font-semibold text-gx-text-2 uppercase tracking-wide">
+            Pipeline Log (nextflow.log)
+          </span>
+          <span className="block text-[10px] font-normal normal-case text-gx-muted mt-0.5">
+            Timestamps in the log file are written by Nextflow as-is (not converted by Portal).
+          </span>
+        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {open && (
+            <button
+              type="button"
+              className="text-[11px] font-normal leading-none text-gx-muted hover:text-gx-accent hover:underline p-0 bg-transparent border-0"
+              onClick={() => { setLoading(true); void fetchLog(); }}
+            >
+              Refresh
+            </button>
+          )}
+          <button
+            type="button"
+            onClick={() => setOpen(v => !v)}
+            className="text-[11px] font-normal leading-none text-gx-muted hover:opacity-80 p-0 bg-transparent border-0"
+          >
+            {open ? '▲ collapse' : '▼ expand'}
+          </button>
+        </div>
+      </div>
       {open && (
         <div className="bg-[#0a0c12] border-t border-gx-border">
           {loading ? (
@@ -357,7 +410,8 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
           ) : (
             <pre
               ref={preRef}
-              className="text-[11px] leading-relaxed text-green-400 font-mono p-4 max-h-80 overflow-auto whitespace-pre-wrap"
+              onMouseUp={handleLogMouseUp}
+              className="text-[11px] leading-[1.45] text-green-400 font-mono p-4 overflow-auto whitespace-pre-wrap max-h-[calc(11px*1.45*30)] select-text"
             >
               {log || '(empty)'}
             </pre>
@@ -365,6 +419,16 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
         </div>
       )}
     </div>
+    {copyHint && (
+      <div
+        className="fixed bottom-[68px] right-6 z-[9999] rounded-md bg-gx-success text-white text-xs px-3 py-1.5 pointer-events-none shadow-gx-md transition-opacity"
+        role="status"
+        aria-live="polite"
+      >
+        {copyHint}
+      </div>
+    )}
+    </>
   );
 }
 
@@ -402,12 +466,12 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
           ▶ Start
         </Button>
         <Button variant="secondary" size="sm" loading={busy}
-          onClick={() => run('Fresh Start', () => ordersApi.start(order.order_id, { fresh: true }))}>
-          ▶ Fresh
+          onClick={() => run('Force Run', () => ordersApi.start(order.order_id))}>
+          ▶ Force Run
         </Button>
         <Button variant="secondary" size="sm" loading={busy}
-          onClick={() => run('Force Run', () => ordersApi.start(order.order_id, { force: true }))}>
-          ▶ Force
+          onClick={() => run('Force Run (Fresh)', () => ordersApi.start(order.order_id, { fresh: true }))}>
+          ▶ Force Run (Fresh)
         </Button>
       </>)}
       {canStop && (
@@ -417,12 +481,12 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
         </Button>
       )}
       <Button variant="ghost" size="sm" loading={busy}
-        onClick={() => run('Reprocess', () => ordersApi.reprocess(order.order_id))}>
-        ↺ Reprocess
+        onClick={() => run('Reprocess only', () => ordersApi.reprocess(order.order_id))}>
+        ↺ Reprocess only
       </Button>
       <Button variant="ghost" size="sm" loading={busy}
-        onClick={() => run('Delete Run', () => ordersApi.deleteRun(order.order_id))}>
-        ✕ Delete Run
+        onClick={() => run('Delete', () => ordersApi.deleteRun(order.order_id))}>
+        ✕ Delete
       </Button>
       <Button variant="danger" size="sm" loading={busy}
         onClick={() => run('Purge DB', () => ordersApi.purgeDb(order.order_id))}>
@@ -566,20 +630,35 @@ export function OrderDetailPage({ id }: { id: string }) {
   const router = useRouter();
   const [order, setOrder]   = useState<Order | null>(null);
   const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
 
   const load = useCallback(async () => {
+    setLoading(true);
+    setError(null);
     try {
       setOrder(await ordersApi.getById(id));
-    } catch {
-      router.push('/orders');
+    } catch (e) {
+      setOrder(null);
+      setError(e instanceof Error ? e.message : 'Failed to load order');
     } finally {
       setLoading(false);
     }
-  }, [id, router]);
+  }, [id]);
 
   useEffect(() => { load(); }, [load]);
 
   if (loading) return <p className="p-8 text-gx-muted text-sm">Loading…</p>;
+  if (error) {
+    return (
+      <div className="p-8">
+        <PageHeader title="Order Detail" backHref="/orders" />
+        <p className="text-gx-danger text-sm mb-4">{error}</p>
+        <Button variant="secondary" size="sm" onClick={() => router.push('/orders')}>
+          Back to Orders
+        </Button>
+      </div>
+    );
+  }
   if (!order) return null;
 
   const params = (order.params && typeof order.params === 'object') ? order.params as P : {};

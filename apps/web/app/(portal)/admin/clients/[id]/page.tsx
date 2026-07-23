@@ -2,6 +2,7 @@ import { ClientFormPage } from '../../../../../components/admin/clients/ClientFo
 
 export const metadata = { title: 'Client — Gx-Portal' };
 
-export default function ClientDetailPage({ params }: { params: { id: string } }) {
-  return <ClientFormPage id={params.id} />;
+export default async function ClientDetailPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <ClientFormPage id={id} />;
 }

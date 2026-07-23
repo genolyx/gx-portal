@@ -3,9 +3,12 @@
 import { useCallback, useEffect, useState } from 'react';
 import { ordersApi } from '../../../lib/api/orders';
 import { catalogApi } from '../../../lib/api/catalog';
+import { populateOrderForm, resolveOrderServiceCode } from '../../../lib/order-form-populate';
+import { canEditOrderService } from '../../../lib/order-menu';
 import { Button } from '../../ui/Button';
 import { FileBrowseModal } from './FileBrowseModal';
-import type { PanelPackage } from '../../../lib/api/catalog';
+import { portalTodayIso } from '../../../lib/datetime';
+import type { Order } from '@gx-portal/types';
 import styles from './CreateOrder.module.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
@@ -76,7 +79,7 @@ const PACKAGE_CODE: Record<ServiceCode, string> = {
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-function today() { return new Date().toISOString().split('T')[0]; }
+function today() { return portalTodayIso(); }
 
 function initCarrierSub(svc: ServiceCode) {
   return {
@@ -259,12 +262,15 @@ function assignFastqPair(paths: string[]): [string, string] {
 
 interface Props {
   onClose: () => void;
-  onCreated: () => void;
+  onSaved: () => void;
+  initial?: { mode: 'edit' | 'followUp'; order: Order };
 }
 
-export function CreateOrderModal({ onClose, onCreated }: Props) {
-  const [step,    setStep]    = useState<'service' | 'form'>('service');
-  const [service, setService] = useState<ServiceCode>('carrier_screening');
+export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
+  const [step,    setStep]    = useState<'service' | 'form'>(initial ? 'form' : 'service');
+  const [service, setService] = useState<ServiceCode>(
+    initial ? resolveOrderServiceCode(initial.order) : 'carrier_screening',
+  );
   const [panels,  setPanels]  = useState<PanelPackage[]>([]);
 
   // Common
@@ -301,6 +307,35 @@ export function CreateOrderModal({ onClose, onCreated }: Props) {
   const [error,  setError]  = useState('');
 
   useEffect(() => {
+    if (!initial) return;
+    if (!canEditOrderService(initial.order.service_code)) {
+      setError('Editing is only supported for Carrier Screening, Whole Exome, Health Screening, and Single-gene NIPT orders.');
+      return;
+    }
+    const populated = populateOrderForm(initial.order, initial.mode);
+    setService(populated.service);
+    setStep('form');
+    setDescription(populated.description);
+    setWorkDir(populated.workDir);
+    setFastqR1(populated.fastqR1);
+    setFastqR2(populated.fastqR2);
+    setInputBam(populated.inputBam);
+    setInputBamCsv(populated.inputBamCsv);
+    setBackboneBed(populated.backboneBed);
+    setDiseaseBed(populated.diseaseBed);
+    setMaxAf(populated.maxAf);
+    setHpoTerms(populated.hpoTerms);
+    setGeneFilter(populated.geneFilter);
+    setWesPanel(populated.wesPanel);
+    setCapturePanel(populated.capturePanel);
+    setIncludeApoePgx(populated.includeApoePgx);
+    setPanelFilterAfterAnalysis(populated.panelFilterAfterAnalysis);
+    setInterpretationGenesExtra(populated.interpretationGenesExtra);
+    setCarrier(populated.carrier as ReturnType<typeof initCarrierSub>);
+    setNipt(populated.nipt as ReturnType<typeof initNiptSub>);
+  }, [initial]);
+
+  useEffect(() => {
     catalogApi.getPanels().then((r) => {
       const all = r.panels ?? [];
       setPanels(all);
@@ -310,11 +345,12 @@ export function CreateOrderModal({ onClose, onCreated }: Props) {
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
-  // When service changes, reset relevant defaults
+  // When service changes, reset relevant defaults (create flow only)
   useEffect(() => {
+    if (initial) return;
     if (service === 'sgnipt') setNipt(initNiptSub());
     else setCarrier(initCarrierSub(service));
-  }, [service]);
+  }, [service, initial]);
 
   // Group panels by category for optgroup display
   const CATEGORY_LABELS: Record<string, string> = {
@@ -372,23 +408,34 @@ export function CreateOrderModal({ onClose, onCreated }: Props) {
         };
       }
 
-      await ordersApi.create(service, {
+      const body = {
         description: description.trim() || undefined,
         work_dir: workDir.trim() || undefined,
         fastq_r1_path: fastqR1.trim() || undefined,
         fastq_r2_path: fastqR2.trim() || undefined,
         params,
-      });
-      onCreated();
+      };
+
+      if (initial?.mode === 'edit') {
+        await ordersApi.update(initial.order.order_id, body);
+      } else {
+        await ordersApi.create(service, body);
+      }
+      onSaved();
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Failed to create order');
     } finally { setSaving(false); }
   };
 
   const isExome = service !== 'sgnipt';
-  const formTitle = service === 'sgnipt'
-    ? 'Create Single-gene NIPT Order'
-    : `New ${SERVICES.find((s) => s.code === service)?.label} Order`;
+  const formTitle = initial?.mode === 'edit'
+    ? (service === 'sgnipt' ? 'Edit Single-gene NIPT Order' : `Edit ${SERVICES.find((s) => s.code === service)?.label} Order`)
+    : initial?.mode === 'followUp'
+      ? (service === 'sgnipt' ? 'Create Single-gene NIPT order (follow-up)' : `New order from ${initial.order.order_id}`)
+      : service === 'sgnipt'
+        ? 'Create Single-gene NIPT Order'
+        : `New ${SERVICES.find((s) => s.code === service)?.label} Order`;
+  const saveLabel = initial?.mode === 'edit' ? 'Update order' : 'Save order';
 
   return (
     <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
@@ -431,10 +478,16 @@ export function CreateOrderModal({ onClose, onCreated }: Props) {
               {/* ── Order / Sample ── */}
               <Sec title={isExome ? 'Order / Sample' : undefined}>
                 <Field label="Order ID" wide>
-                  <p className={styles.sectionDesc} style={{ margin: 0 }}>
-                    Assigned automatically on save
-                    {isExome ? ' (e.g. CSGX26070001).' : ' (e.g. SNGX26070001).'}
-                  </p>
+                  {initial?.mode === 'edit' ? (
+                    <p className={styles.sectionDesc} style={{ margin: 0 }}>
+                      <code>{initial.order.order_id}</code>
+                    </p>
+                  ) : (
+                    <p className={styles.sectionDesc} style={{ margin: 0 }}>
+                      Assigned automatically on save
+                      {isExome ? ' (e.g. CSGX26070001).' : ' (e.g. SNGX26070001).'}
+                    </p>
+                  )}
                 </Field>
                 <Field label="Description" wide>
                   <Inp value={description} onChange={setDescription}
@@ -762,10 +815,12 @@ export function CreateOrderModal({ onClose, onCreated }: Props) {
             </>
           ) : (
             <>
-              <Button variant="ghost" size="sm" onClick={() => setStep('service')}>← Back</Button>
+              {!initial && (
+                <Button variant="ghost" size="sm" onClick={() => setStep('service')}>← Back</Button>
+              )}
               <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
               <Button variant="primary" size="sm" loading={saving} onClick={handleSubmit}>
-                Save order
+                {saveLabel}
               </Button>
             </>
           )}

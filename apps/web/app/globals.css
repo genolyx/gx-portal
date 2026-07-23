@@ -1,6 +1,28 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
+
+@theme {
+  --color-gx-bg:           var(--bg);
+  --color-gx-surface:      var(--bg-surface);
+  --color-gx-elevated:     var(--bg-elevated);
+  --color-gx-border:       var(--border);
+  --color-gx-text:         var(--text-primary);
+  --color-gx-text-2:       var(--text-secondary);
+  --color-gx-muted:        var(--text-muted);
+  --color-gx-accent:       var(--accent);
+  --color-gx-accent-hover: var(--accent-hover);
+  --color-gx-accent-dim:   var(--accent-dim);
+  --color-gx-success:      var(--success);
+  --color-gx-warning:      var(--warning);
+  --color-gx-danger:       var(--danger);
+  --color-gx-info:         var(--info);
+
+  --radius-gx:    var(--radius-md);
+  --radius-gx-sm: var(--radius-sm);
+  --radius-gx-lg: var(--radius-lg);
+
+  --shadow-gx-sm: var(--shadow-sm);
+  --shadow-gx-md: var(--shadow-md);
+}
 
 /* ══════════════════════════════════════════════
    Design tokens — consumed by Tailwind (gx-*)

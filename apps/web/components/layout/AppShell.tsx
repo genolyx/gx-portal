@@ -8,10 +8,11 @@ import { cn } from '../../lib/utils';
 import { ThemeToggle, FontSizeToggle } from './ThemeToggle';
 import { authApi } from '../../lib/api/auth';
 import { systemApi } from '../../lib/api/system';
+import { activeDaemonUrl, DAEMON_URL_KEY, resolveDaemonPreset } from '../../lib/daemon-presets';
 import { Button } from '../ui/Button';
 
 type NavItem =
-  | { href: string; label: string; icon: string; group?: string; divider?: never }
+  | { href: string; label: string; icon: string; group?: string; adminOnly?: boolean; divider?: never }
   | { divider: true; href?: never; label?: never; icon?: never };
 
 const NAV_ITEMS: NavItem[] = [
@@ -28,18 +29,32 @@ const NAV_ITEMS: NavItem[] = [
   { href: '/admin/users',   label: 'Users',   icon: '⊛', group: 'Admin' },
   { divider: true },
   { href: '/config', label: 'Config', icon: '⚙' },
+  { href: '/admin/resources', label: 'Resource Monitor', icon: '📊', adminOnly: true },
 ];
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [daemonOk, setDaemonOk] = useState<boolean | null>(null);
+  const [daemonLabel, setDaemonLabel] = useState<string>('gx-daemon');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
   let shownAdmin = false;
 
   useEffect(() => {
     authApi.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
+  useEffect(() => {
+    const savedUrl = localStorage.getItem(DAEMON_URL_KEY);
+    systemApi.getConfig().then((cfg) => {
+      const url = activeDaemonUrl(savedUrl, cfg.daemonUrl);
+      const preset = resolveDaemonPreset(url);
+      if (preset) setDaemonLabel(preset.label);
+    }).catch(() => {
+      const preset = resolveDaemonPreset(savedUrl ?? '');
+      if (preset) setDaemonLabel(preset.label);
+    });
   }, []);
 
   useEffect(() => {
@@ -94,9 +109,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             />
             {daemonOk === null
               ? 'checking…'
-              : daemonOk
-              ? 'gx-daemon connected'
-              : 'gx-daemon unreachable'}
+              : `${daemonLabel} ${daemonOk ? 'connected' : 'disconnected'}`}
           </div>
         </div>
 
@@ -106,7 +119,8 @@ export function AppShell({ children }: { children: React.ReactNode }) {
             if ('divider' in item && item.divider) {
               return <div key={`d-${i}`} className="h-px bg-gx-border my-2" />;
             }
-            const nav = item as { href: string; label: string; icon: string; group?: string };
+            const nav = item as { href: string; label: string; icon: string; group?: string; adminOnly?: boolean };
+            if (nav.adminOnly && user?.role !== 'admin') return null;
             const active = pathname?.startsWith(nav.href) ?? false;
             const showGroup = nav.group && !shownAdmin;
             if (nav.group) shownAdmin = true;

@@ -2,6 +2,8 @@
 
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { systemApi } from '../../lib/api/system';
+import { DAEMON_PRESETS, DAEMON_URL_KEY } from '../../lib/daemon-presets';
+import { formatPortalTimeNow } from '../../lib/datetime';
 import { PageHeader } from '../ui/PageHeader';
 import { Button } from '../ui/Button';
 import styles from './Config.module.css';
@@ -10,12 +12,6 @@ import styles from './Config.module.css';
 
 const PIPELINE_CFG_KEY = 'gx-portal-pipeline-config';
 const AI_PROVIDER_KEY  = 'gx-portal-ai-provider';
-const DAEMON_URL_KEY   = 'gx-portal-daemon-url';
-
-const DAEMON_PRESETS = [
-  { id: 'prod', label: 'gx-daemon (prod)', port: 8010 },
-  { id: 'dev',  label: 'gx-daemon (dev)',  port: 8011 },
-];
 
 function presetUrl(port: number) {
   if (typeof window === 'undefined') return `http://localhost:${port}`;
@@ -94,7 +90,7 @@ function DaemonConnectionSection() {
         text = extractLines(raw);
       }
       setLog(text);
-      setLogStatus(new Date().toLocaleTimeString());
+      setLogStatus(formatPortalTimeNow());
       if (autoScroll && logBoxRef.current) {
         logBoxRef.current.scrollTop = logBoxRef.current.scrollHeight;
       }

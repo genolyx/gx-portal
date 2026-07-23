@@ -1,14 +1,18 @@
 'use client';
 
 import { useEffect, useState, useCallback, useRef } from 'react';
+import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { ordersApi } from '../../../lib/api/orders';
 import { PageHeader } from '../../ui/PageHeader';
 import { Button } from '../../ui/Button';
 import { OrderStatusBadge } from '../../ui/Badge';
-import { CreateOrderModal } from '../CreateOrder/CreateOrderModal';
+import { ReportDownloadLink } from '../ReportDownloadLink';
+import { reportLangLabel } from '../../../lib/report-downloads';
 import type { Order } from '@gx-portal/types';
+import { buildOrderMenuItems, canEditOrderService, type OrderMenuAction } from '../../../lib/order-menu';
 import { cn } from '../../../lib/utils';
+import { formatPortalDateTime, parsePortalDate, portalDayEnd, portalDayStart } from '../../../lib/datetime';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -49,15 +53,7 @@ const SERVICES: { value: string; label: string }[] = [
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
 function fmtDate(iso?: string | null): string {
-  if (!iso) return '—';
-  try {
-    return new Date(iso).toLocaleString('ko-KR', {
-      year: 'numeric', month: '2-digit', day: '2-digit',
-      hour: '2-digit', minute: '2-digit',
-    });
-  } catch {
-    return iso.slice(0, 16).replace('T', ' ');
-  }
+  return formatPortalDateTime(iso);
 }
 
 function getLabCode(o: Order): string {
@@ -84,22 +80,19 @@ function getReportFiles(files: OutputFile[]): { pdfs: OutputFile[]; htmls: Outpu
 }
 
 function getLangLabel(name: string): string {
-  const m = name.match(/_([A-Z]{2,3})\.(pdf|html)$/i);
-  return m ? m[1].toUpperCase() : 'FILE';
+  return reportLangLabel(name);
 }
 
 /** Check if order matches filter */
 function matchesFilter(o: Order, f: FilterState): boolean {
   // Date range
   if (f.dateFrom) {
-    const d = new Date(o.created_at);
-    if (isNaN(d.getTime()) || d < new Date(f.dateFrom)) return false;
+    const d = parsePortalDate(o.created_at);
+    if (!d || d < portalDayStart(f.dateFrom)) return false;
   }
   if (f.dateTo) {
-    const d = new Date(o.created_at);
-    const to = new Date(f.dateTo);
-    to.setHours(23, 59, 59, 999);
-    if (isNaN(d.getTime()) || d > to) return false;
+    const d = parsePortalDate(o.created_at);
+    if (!d || d > portalDayEnd(f.dateTo)) return false;
   }
   // Service
   if (f.service && o.service_code !== f.service) return false;
@@ -421,40 +414,24 @@ function ReportFilesCell({ orderId, status }: { orderId: string; status: string 
   return (
     <div className="flex flex-wrap gap-1.5">
       {pdfs.map(f => (
-        <a
+        <ReportDownloadLink
           key={f.name}
-          href={ordersApi.getOutputFileUrl(orderId, f.name)}
-          target="_blank"
-          rel="noreferrer"
-          onClick={e => e.stopPropagation()}
-          className={cn(
-            'inline-flex items-center gap-1 px-2.5 py-1 rounded-gx-sm border text-[11px] font-semibold',
-            'bg-gx-danger/10 text-gx-danger border-gx-danger/30',
-            'hover:bg-gx-danger/20 hover:border-gx-danger/60 active:scale-95',
-            'transition-all select-none whitespace-nowrap',
-          )}
-        >
-          <span className="text-[10px]">↓</span>
-          PDF {getLangLabel(f.name)}
-        </a>
+          orderId={orderId}
+          filename={f.name}
+          label={`PDF ${getLangLabel(f.name)}`}
+          kind="pdf"
+          stopRowClick
+        />
       ))}
       {htmls.map(f => (
-        <a
+        <ReportDownloadLink
           key={f.name}
-          href={ordersApi.getOutputFileUrl(orderId, f.name)}
-          target="_blank"
-          rel="noreferrer"
-          onClick={e => e.stopPropagation()}
-          className={cn(
-            'inline-flex items-center gap-1 px-2.5 py-1 rounded-gx-sm border text-[11px] font-semibold',
-            'bg-gx-info/10 text-gx-info border-gx-info/30',
-            'hover:bg-gx-info/20 hover:border-gx-info/60 active:scale-95',
-            'transition-all select-none whitespace-nowrap',
-          )}
-        >
-          <span className="text-[10px]">↓</span>
-          HTML {getLangLabel(f.name)}
-        </a>
+          orderId={orderId}
+          filename={f.name}
+          label={`HTML ${getLangLabel(f.name)}`}
+          kind="html"
+          stopRowClick
+        />
       ))}
     </div>
   );
@@ -462,11 +439,22 @@ function ReportFilesCell({ orderId, status }: { orderId: string; status: string 
 
 // ─── ActionsMenu ──────────────────────────────────────────────────────────────
 
-function ActionsMenu({ order, onActionDone }: { order: Order; onActionDone: () => void }) {
+function ActionsMenu({
+  order,
+  onActionDone,
+  onEdit,
+  onFollowUp,
+}: {
+  order: Order;
+  onActionDone: () => void;
+  onEdit: (order: Order) => void;
+  onFollowUp: (order: Order) => void;
+}) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const items = buildOrderMenuItems(order);
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -484,9 +472,59 @@ function ActionsMenu({ order, onActionDone }: { order: Order; onActionDone: () =
     finally { setBusy(false); }
   };
 
-  const canStart  = ['SAVED', 'FAILED', 'CANCELLED'].includes(order.status);
-  const canStop   = ['RUNNING', 'QUEUED'].includes(order.status);
-  const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status);
+  const handleAction = async (action: OrderMenuAction) => {
+    setOpen(false);
+    switch (action) {
+      case 'edit':
+        if (!canEditOrderService(order.service_code)) {
+          alert('Editing is only supported for Carrier Screening, Whole Exome, Health Screening, and Single-gene NIPT orders.');
+          return;
+        }
+        try {
+          const full = await ordersApi.getById(order.order_id);
+          onEdit(full);
+        } catch (e) {
+          alert(e instanceof Error ? e.message : String(e));
+        }
+        return;
+      case 'new-from':
+        if (!canEditOrderService(order.service_code)) {
+          alert('Follow-up orders are only supported for carrier screening, whole exome, health screening, and Single-gene NIPT.');
+          return;
+        }
+        try {
+          const full = await ordersApi.getById(order.order_id);
+          onFollowUp(full);
+        } catch (e) {
+          alert(e instanceof Error ? e.message : String(e));
+        }
+        return;
+      case 'review':
+        router.push(`/review/${order.order_id}`);
+        return;
+      case 'submit':
+        await run('Submit', () => ordersApi.start(order.order_id));
+        return;
+      case 'force-run':
+        await run('Force Run', () => ordersApi.start(order.order_id));
+        return;
+      case 'force-run-fresh':
+        await run('Force Run (Fresh)', () => ordersApi.start(order.order_id, { fresh: true }));
+        return;
+      case 'reprocess-only':
+        await run('Reprocess only', () => ordersApi.reprocess(order.order_id));
+        return;
+      case 'stop':
+        await run('Stop', () => ordersApi.stop(order.order_id));
+        return;
+      case 'delete':
+        await run('Delete', () => ordersApi.deleteRun(order.order_id));
+        return;
+      case 'purge-db':
+        await run('Purge DB', () => ordersApi.purgeDb(order.order_id));
+        return;
+    }
+  };
 
   return (
     <div className="relative" ref={ref}>
@@ -499,37 +537,36 @@ function ActionsMenu({ order, onActionDone }: { order: Order; onActionDone: () =
         onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
       >···</button>
       {open && (
-        <div className="absolute right-0 z-50 mt-1 w-44 rounded-gx bg-gx-surface border border-gx-border shadow-gx-md py-1"
+        <div className="absolute right-0 z-50 mt-1 w-52 rounded-gx bg-gx-surface border border-gx-border shadow-gx-md py-1"
           onClick={e => e.stopPropagation()}>
-          <MenuItem onClick={() => { setOpen(false); router.push(`/orders/${order.order_id}`); }}>Detail →</MenuItem>
-          {canReview && <MenuItem onClick={() => { setOpen(false); router.push(`/review/${order.order_id}`); }}>Review →</MenuItem>}
-          {canStart && (<>
-            <Divider />
-            <MenuItem onClick={() => run('Start',       () => ordersApi.start(order.order_id))}>▶ Start</MenuItem>
-            <MenuItem onClick={() => run('Fresh Start', () => ordersApi.start(order.order_id, { fresh: true }))}>▶ Fresh Start</MenuItem>
-            <MenuItem onClick={() => run('Force Run',   () => ordersApi.start(order.order_id, { force: true }))}>▶ Force Run</MenuItem>
-          </>)}
-          {canStop && (<><Divider /><MenuItem danger onClick={() => run('Stop', () => ordersApi.stop(order.order_id))}>■ Stop</MenuItem></>)}
-          <Divider />
-          <MenuItem onClick={() => run('Reprocess',  () => ordersApi.reprocess(order.order_id))}>↺ Reprocess</MenuItem>
-          <MenuItem danger onClick={() => run('Delete Run', () => ordersApi.deleteRun(order.order_id))}>✕ Delete Run</MenuItem>
-          <MenuItem danger onClick={() => run('Purge DB',   () => ordersApi.purgeDb(order.order_id))}>⊗ Purge DB</MenuItem>
+          {items.map((item) => (
+            <MenuItem
+              key={item.action}
+              danger={item.danger}
+              title={item.title}
+              onClick={() => void handleAction(item.action)}
+            >
+              {item.label}
+            </MenuItem>
+          ))}
         </div>
       )}
     </div>
   );
 }
 
-function MenuItem({ children, onClick, danger }: { children: React.ReactNode; onClick: () => void; danger?: boolean }) {
+function MenuItem({ children, onClick, danger, title }: {
+  children: React.ReactNode; onClick: () => void; danger?: boolean; title?: string;
+}) {
   return (
     <button
+      title={title}
       className={cn('w-full text-left px-3 py-1.5 text-xs transition-colors',
         danger ? 'text-gx-danger hover:bg-gx-danger/10' : 'text-gx-text hover:bg-gx-elevated')}
       onClick={onClick}
     >{children}</button>
   );
 }
-function Divider() { return <div className="my-1 border-t border-gx-border" />; }
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -539,6 +576,7 @@ export function OrdersPageClient() {
   const [loading, setLoading] = useState(true);
   const [sort, setSort]       = useState<SortState>({ key: 'created_at', dir: 'desc' });
   const [showCreate, setShowCreate] = useState(false);
+  const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
 
   // Two-stage filter: pending (in the form) → active (applied to data)
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTER);
@@ -579,10 +617,11 @@ export function OrdersPageClient() {
         }
       />
 
-      {showCreate && (
+      {(showCreate || orderForm) && (
         <CreateOrderModal
-          onClose={() => setShowCreate(false)}
-          onCreated={() => { setShowCreate(false); load(); }}
+          initial={orderForm ?? undefined}
+          onClose={() => { setShowCreate(false); setOrderForm(null); }}
+          onSaved={() => { setShowCreate(false); setOrderForm(null); load(); }}
         />
       )}
 
@@ -598,7 +637,7 @@ export function OrdersPageClient() {
 
       {/* ── Instruction hint ── */}
       <p className="text-[11px] text-gx-muted mb-3">
-        Click a row to open detail. Report-ready orders show PDF / HTML buttons.  Use ··· for Start, Stop, Delete, Purge actions.
+        Click a row to open detail. Report-ready orders show PDF / HTML buttons. Use ··· for Edit, Review, Force Run, Reprocess, Delete, and other actions.
       </p>
 
       {loading ? (
@@ -632,10 +671,15 @@ export function OrdersPageClient() {
                     idx % 2 === 0 ? 'bg-gx-bg' : 'bg-gx-surface',
                     'hover:bg-gx-accent-dim',
                   )}
-                  onClick={() => router.push(`/orders/${o.order_id}`)}
+                  onClick={() => router.push(`/orders/${encodeURIComponent(o.order_id)}`)}
                 >
-                  <td className="px-3 py-2.5 border-b border-gx-border">
-                    <span className="font-mono text-xs text-gx-accent">{o.order_id}</span>
+                  <td className="px-3 py-2.5 border-b border-gx-border" onClick={(e) => e.stopPropagation()}>
+                    <Link
+                      href={`/orders/${encodeURIComponent(o.order_id)}`}
+                      className="font-mono text-xs text-gx-accent hover:underline"
+                    >
+                      {o.order_id}
+                    </Link>
                   </td>
                   <td className="px-3 py-2.5 border-b border-gx-border">
                     <ServiceBadge code={o.service_code} />
@@ -673,7 +717,12 @@ export function OrdersPageClient() {
                     <ReportFilesCell orderId={o.order_id} status={o.status} />
                   </td>
                   <td className="px-2 py-2.5 border-b border-gx-border">
-                    <ActionsMenu order={o} onActionDone={load} />
+                    <ActionsMenu
+                      order={o}
+                      onActionDone={load}
+                      onEdit={(order) => setOrderForm({ mode: 'edit', order })}
+                      onFollowUp={(order) => setOrderForm({ mode: 'followUp', order })}
+                    />
                   </td>
                 </tr>
               ))}

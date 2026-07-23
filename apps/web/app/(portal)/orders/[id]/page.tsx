@@ -1,5 +1,6 @@
 import { OrderDetailPage } from '../../../../components/orders/OrderDetail/OrderDetailPage';
 
-export default function OrderPage({ params }: { params: { id: string } }) {
-  return <OrderDetailPage id={params.id} />;
+export default async function OrderPage({ params }: { params: Promise<{ id: string }> }) {
+  const { id } = await params;
+  return <OrderDetailPage id={id} />;
 }

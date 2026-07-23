@@ -1,7 +1,8 @@
 'use client';
 
-import { useCallback, useEffect, useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { catalogApi, type VariantSet, type VariantSetEntry } from '../../lib/api/catalog';
+import { formatPortalDateTime } from '../../lib/datetime';
 import { PageHeader } from '../ui/PageHeader';
 import { Button } from '../ui/Button';
 import styles from './Catalog.module.css';
@@ -128,15 +129,15 @@ export function VariantSetsPageClient() {
                   const isExpanded = expanded.has(s.id);
                   const setEntryData = entries[s.id];
                   return (
-                    <>
-                      <tr key={s.id} className={isExpanded ? styles.rowExpanded : ''}>
+                    <React.Fragment key={s.id}>
+                      <tr className={isExpanded ? styles.rowExpanded : ''}>
                         <td>
                           <button type="button" className={styles.tagBtn} onClick={() => toggleExpand(s.id)}>
                             {isExpanded ? '▼ ' : '▶ '}{s.tag_name}
                           </button>
                         </td>
                         <td className={styles.mono}>{s.entry_count.toLocaleString()}</td>
-                        <td className={styles.muted}>{s.updated_at ? new Date(s.updated_at).toISOString().replace('T', ' ').slice(0, 19) + ' UTC' : '—'}</td>
+                        <td className={styles.muted}>{s.updated_at ? formatPortalDateTime(s.updated_at) : '—'}</td>
                         <td>
                           <Button size="sm" variant="ghost" onClick={() => handleDelete(s.id, s.tag_name)}>Delete</Button>
                         </td>
@@ -182,7 +183,7 @@ export function VariantSetsPageClient() {
                           </td>
                         </tr>
                       )}
-                    </>
+                    </React.Fragment>
                   );
                 })}
               </tbody>
