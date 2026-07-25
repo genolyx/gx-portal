@@ -17,6 +17,8 @@ export interface ConfirmedVariant extends Variant {
   reviewer_comment?: string;
   gene_description?: string;
   variant_summary?: string;
+  report_gene_description?: string;
+  report_variant_summary?: string;
   include_in_report?: boolean;
 }
 

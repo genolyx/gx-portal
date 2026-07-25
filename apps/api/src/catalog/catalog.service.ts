@@ -5,6 +5,8 @@ import { DaemonService } from '../daemon/daemon.service';
 const WES_PANELS_CUSTOM_PATH =
   process.env.WES_PANELS_CUSTOM_JSON ?? '/data/wes_panels/wes_panels_custom.json';
 
+type LitQuery = Record<string, string | number | boolean | undefined>;
+
 @Injectable()
 export class CatalogService {
   constructor(private readonly daemon: DaemonService) {}
@@ -63,13 +65,71 @@ export class CatalogService {
   }
 
   // ── Literature ──────────────────────────────────────────────────────
-  getLiteratureStats() {
-    return this.daemon.get<unknown>('/api/literature/articles/stats').catch(() => ({ total: 0, by_gene: {} }));
+  async getLiteratureStats() {
+    try {
+      const stats = await this.daemon.get<Record<string, unknown>>('/api/literature/articles/stats');
+      if (stats?.enabled === false) {
+        return {
+          enabled: false,
+          total: 0,
+          total_articles: 0,
+          unique_genes: 0,
+          total_searches: 0,
+          genes: [] as string[],
+        };
+      }
+      const totalArticles = Number(stats.total_articles ?? 0);
+      return {
+        enabled: true,
+        total: totalArticles,
+        total_articles: totalArticles,
+        unique_genes: Number(stats.unique_genes ?? 0),
+        total_searches: Number(stats.total_searches ?? 0),
+        genes: Array.isArray(stats.genes) ? stats.genes : [],
+      };
+    } catch {
+      return {
+        enabled: false,
+        total: 0,
+        total_articles: 0,
+        unique_genes: 0,
+        total_searches: 0,
+        genes: [] as string[],
+        db_missing: true,
+      };
+    }
   }
 
-  getLiteratureArticles(query: Record<string, string | number | boolean | undefined>) {
-    return this.daemon.get<unknown>('/api/literature/articles', query)
-      .catch(() => ({ articles: [], total: 0, page: 1, per_page: 20, db_missing: true }));
+  async getLiteratureArticles(query: LitQuery) {
+    const page = Math.max(1, Number(query.page ?? 1) || 1);
+    const perPage = Math.min(200, Math.max(1, Number(query.per_page ?? 50) || 50));
+    const cursor = (page - 1) * perPage;
+    const daemonQuery = {
+      cursor,
+      count: perPage,
+      search: typeof query.q === 'string' ? query.q : '',
+      sort_by: typeof query.sort === 'string' && query.sort ? query.sort : 'cached_at',
+    };
+    try {
+      const res = await this.daemon.get<Record<string, unknown>>('/api/literature/articles', daemonQuery);
+      return {
+        articles: Array.isArray(res.articles) ? res.articles : [],
+        total: Number(res.total ?? 0),
+        page,
+        per_page: perPage,
+        cursor: Number(res.cursor ?? cursor),
+        next_cursor: res.next_cursor,
+        has_more: Boolean(res.has_more),
+      };
+    } catch {
+      return {
+        articles: [],
+        total: 0,
+        page,
+        per_page: perPage,
+        db_missing: true,
+      };
+    }
   }
 
   getLiteratureArticle(pmid: string) {
@@ -84,8 +144,18 @@ export class CatalogService {
     return this.daemon.delete<unknown>('/api/literature/cache');
   }
 
-  searchLiterature(query: Record<string, string | number | boolean | undefined>) {
-    return this.daemon.get<unknown>('/api/literature/search', query)
-      .catch(() => ({ articles: [], total: 0, db_missing: true }));
+  async searchLiterature(query: LitQuery) {
+    try {
+      const res = await this.daemon.get<Record<string, unknown>>('/api/literature/search', query);
+      const totalFound = Number(res.total_found ?? res.total ?? 0);
+      return {
+        ...res,
+        articles: Array.isArray(res.articles) ? res.articles : [],
+        total: totalFound,
+        total_found: totalFound,
+      };
+    } catch {
+      return { articles: [], total: 0, total_found: 0, db_missing: true };
+    }
   }
 }

@@ -1,7 +1,8 @@
 import { api } from './client';
 import type {
   ReviewData, ClassifyRequest, ClassifyResponse,
-  CoverageContext, GeneKnowledge, VariantKnowledge,
+  CoverageContext, GeneKnowledgeResponse,
+  GeneKnowledgeSaveRequest, VariantKnowledgeSaveRequest,
   ReportBody, ReportPreviewResponse,
 } from '@gx-portal/types';
 
@@ -16,6 +17,14 @@ export function orderArtifactUrl(orderId: string, relPath: string): string {
   return `/api/review/${encodeURIComponent(orderId)}/file/${encoded}`;
 }
 
+export type GeneKnowledgeQuery = {
+  enrich?: boolean;
+  gene?: string;
+  force?: boolean;
+  genes?: string;
+  lang?: string;
+};
+
 export const reviewApi = {
   getResult: (orderId: string) => api.get<ReviewData>(`/review/${orderId}/result`),
   classify: (orderId: string, body: ClassifyRequest) =>
@@ -24,14 +33,24 @@ export const reviewApi = {
     api.get<CoverageContext>(`/review/${orderId}/coverage-context`),
   getGeneCoverage: (orderId: string, gene: string) =>
     api.get<unknown>(`/review/${orderId}/gene-coverage/${gene}`),
-  getGeneKnowledge: (orderId: string) =>
-    api.get<GeneKnowledge[]>(`/review/${orderId}/gene-knowledge`),
-  putGeneKnowledge: (orderId: string, data: GeneKnowledge[]) =>
-    api.put<GeneKnowledge[]>(`/review/${orderId}/gene-knowledge`, data),
-  getVariantKnowledge: (orderId: string) =>
-    api.get<VariantKnowledge[]>(`/review/${orderId}/variant-knowledge`),
-  putVariantKnowledge: (orderId: string, data: VariantKnowledge[]) =>
-    api.put<VariantKnowledge[]>(`/review/${orderId}/variant-knowledge`, data),
+  getGeneKnowledge: (orderId: string, query: GeneKnowledgeQuery = {}) => {
+    const qs = new URLSearchParams();
+    if (query.enrich) qs.set('enrich', '1');
+    if (query.force) qs.set('force', '1');
+    if (query.gene) qs.set('gene', query.gene);
+    if (query.genes) qs.set('genes', query.genes);
+    if (query.lang) qs.set('lang', query.lang);
+    const suffix = qs.toString() ? `?${qs.toString()}` : '';
+    return api.get<GeneKnowledgeResponse>(`/review/${orderId}/gene-knowledge${suffix}`);
+  },
+  putGeneKnowledge: (orderId: string, body: GeneKnowledgeSaveRequest, genes?: string) => {
+    const suffix = genes ? `?genes=${encodeURIComponent(genes)}` : '';
+    return api.put<unknown>(`/review/${orderId}/gene-knowledge${suffix}`, body);
+  },
+  putVariantKnowledge: (orderId: string, body: VariantKnowledgeSaveRequest, genes?: string) => {
+    const suffix = genes ? `?genes=${encodeURIComponent(genes)}` : '';
+    return api.put<unknown>(`/review/${orderId}/variant-knowledge${suffix}`, body);
+  },
   savePgx: (orderId: string, body: unknown) =>
     api.post<{ pgx?: ReviewData['pgx'] }>(`/review/${orderId}/pgx-review`, body),
   saveDarkGenes: (orderId: string, body: unknown) =>

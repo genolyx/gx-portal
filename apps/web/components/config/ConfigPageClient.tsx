@@ -334,6 +334,10 @@ function AiProviderSection() {
   const [geminiKeyStatus, setGeminiKeyStatus] = useState('—');
   const [saving, setSaving] = useState(false);
   const [saveResult, setSaveResult] = useState('');
+  const [pullName, setPullName] = useState('');
+  const [pulling, setPulling] = useState(false);
+  const [pullStatus, setPullStatus] = useState('');
+  const [pullPct, setPullPct] = useState<number | null>(null);
 
   const refreshModels = useCallback(async (manual = false) => {
     setModelsLoading(true);
@@ -380,15 +384,16 @@ function AiProviderSection() {
       .then((cfg) => {
         const c = cfg as {
           provider?: string;
-          gemini?: { key_loaded?: boolean };
+          gemini?: { available?: boolean; key_loaded?: boolean };
           ollama?: { base_url?: string; model?: string };
         };
         if (c?.provider === 'gemini' || c?.provider === 'ollama') {
           setProvider(c.provider);
           initialProvider = c.provider;
         }
-        if (c?.gemini?.key_loaded) setGeminiKeyStatus('✓ loaded from daemon .env');
-        else if (c?.gemini?.key_loaded === false) setGeminiKeyStatus('✗ not set');
+        const available = c?.gemini?.available ?? c?.gemini?.key_loaded;
+        if (available === true) setGeminiKeyStatus('✓ loaded from daemon .env');
+        else if (available === false) setGeminiKeyStatus('✗ not set');
         if (c?.ollama?.base_url) setOllamaUrl(c.ollama.base_url);
         if (c?.ollama?.model) setOllamaModel(c.ollama.model);
         if (initialProvider === 'ollama') refreshModels();
@@ -401,7 +406,12 @@ function AiProviderSection() {
   const handleApply = async () => {
     setSaving(true);
     setSaveResult('');
-    const cfg = { provider, ollama: { base_url: ollamaUrl, model: ollamaModel } };
+    // Daemon expects flat keys: provider, ollama_base_url, ollama_model
+    const cfg = {
+      provider,
+      ollama_base_url: ollamaUrl,
+      ollama_model: ollamaModel,
+    };
     localStorage.setItem(AI_PROVIDER_KEY, JSON.stringify({ provider, ollamaUrl, ollamaModel }));
     try {
       await systemApi.setAiConfig(cfg);
@@ -410,6 +420,45 @@ function AiProviderSection() {
       setSaveResult('Saved locally (daemon unreachable)');
     } finally {
       setSaving(false);
+    }
+  };
+
+  const handlePull = async () => {
+    const model = pullName.trim();
+    if (!model) {
+      setPullStatus('Enter a model name (e.g. qwen2.5:14b)');
+      return;
+    }
+    setPulling(true);
+    setPullStatus('Starting pull…');
+    setPullPct(null);
+    try {
+      await systemApi.pullOllamaModel(model, (evt) => {
+        if (evt.error) {
+          setPullStatus(String(evt.error));
+          return;
+        }
+        const status = String(evt.status ?? '');
+        const completed = Number(evt.completed ?? 0);
+        const total = Number(evt.total ?? 0);
+        if (total > 0) {
+          const pct = Math.min(100, Math.round((completed / total) * 100));
+          setPullPct(pct);
+          setPullStatus(status || `Downloading… ${pct}%`);
+        } else {
+          setPullStatus(status || 'Working…');
+        }
+        if (status === 'success') {
+          setPullPct(100);
+          setPullStatus('Pull complete');
+        }
+      });
+      await refreshModels();
+      if (model) setOllamaModel(model);
+    } catch (e) {
+      setPullStatus(e instanceof Error ? e.message : 'Pull failed');
+    } finally {
+      setPulling(false);
     }
   };
 
@@ -506,6 +555,32 @@ function AiProviderSection() {
             isLoading={modelsLoading}
             onPress={() => refreshModels(true)}
           />
+        </div>
+      )}
+
+      {provider === 'ollama' && (
+        <div className="rounded-lg border border-border bg-surface-secondary p-4">
+          <p className="mb-2 text-sm font-medium">Pull Ollama model</p>
+          <div className="flex flex-wrap items-end gap-3">
+            <div className="flex flex-1 min-w-[200px] flex-col gap-1.5">
+              <Label>Model name</Label>
+              <Input
+                value={pullName}
+                onChange={(e) => setPullName(e.target.value)}
+                placeholder="e.g. qwen2.5:14b"
+                fullWidth
+              />
+            </div>
+            <Button size="sm" variant="secondary" isDisabled={pulling} onPress={() => void handlePull()}>
+              {pulling ? 'Pulling…' : 'Pull model'}
+            </Button>
+          </div>
+          {(pullStatus || pullPct != null) && (
+            <div className="mt-2 text-xs text-muted">
+              {pullStatus}
+              {pullPct != null ? ` (${pullPct}%)` : ''}
+            </div>
+          )}
         </div>
       )}
 

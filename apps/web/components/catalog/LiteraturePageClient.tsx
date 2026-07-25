@@ -1,6 +1,7 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { useSearchParams } from 'next/navigation';
 import {
   Button,
   Chip,
@@ -13,14 +14,15 @@ import {
   Table,
 } from '@heroui/react';
 import { Trash2 } from 'lucide-react';
-import { catalogApi, type LiteratureArticle } from '../../lib/api/catalog';
+import { catalogApi, type LiteratureArticle, type LiteratureStats } from '../../lib/api/catalog';
 import { LabeledCheckbox } from '../ui/LabeledCheckbox';
 import { PageHeader } from '../ui/PageHeader';
 import { RefreshButton } from '../ui/RefreshButton';
 
-const PER_PAGE = 20;
+const PER_PAGE = 50;
 
 export function LiteraturePageClient() {
+  const searchParams = useSearchParams();
   const [articles, setArticles] = useState<LiteratureArticle[]>([]);
   const [total, setTotal] = useState(0);
   const [page, setPage] = useState(1);
@@ -28,9 +30,7 @@ export function LiteraturePageClient() {
   const [sort, setSort] = useState('cached_at');
   const [loading, setLoading] = useState(true);
   const [dbMissing, setDbMissing] = useState(false);
-  const [stats, setStats] = useState<{ total?: number; by_gene?: Record<string, number> } | null>(
-    null,
-  );
+  const [stats, setStats] = useState<LiteratureStats | null>(null);
 
   const [gene, setGene] = useState('');
   const [hgvsc, setHgvsc] = useState('');
@@ -39,8 +39,13 @@ export function LiteraturePageClient() {
   const [searching, setSearching] = useState(false);
   const [searchMsg, setSearchMsg] = useState('');
   const [searchResult, setSearchResult] = useState<LiteratureArticle[]>([]);
+  const [searchOpen, setSearchOpen] = useState(false);
 
   const [detail, setDetail] = useState<LiteratureArticle | null>(null);
+  const [detailLoading, setDetailLoading] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const deepLinkDone = useRef(false);
+  const filterReady = useRef(false);
 
   const loadStats = useCallback(async () => {
     try {
@@ -80,31 +85,73 @@ export function LiteraturePageClient() {
     void loadStats();
   }, []);
 
-  const handleSearch = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!gene.trim()) {
-      setSearchMsg('Gene is required.');
+  // Debounced cache filter (parity with old portal ~400ms)
+  useEffect(() => {
+    if (!filterReady.current) {
+      filterReady.current = true;
       return;
     }
-    setSearching(true);
-    setSearchMsg('Searching PubMed…');
-    setSearchResult([]);
-    try {
-      const res = await catalogApi.search({
-        gene: gene.trim(),
-        hgvsc: hgvsc.trim() || undefined,
-        hgvsp: hgvsp.trim() || undefined,
-        force_refresh: forceRefresh,
-      });
-      setSearchResult(res.articles ?? []);
-      setSearchMsg(`Found ${res.total ?? res.articles?.length ?? 0} articles`);
-      await load(1, q, sort);
-      await loadStats();
-    } catch (err) {
-      setSearchMsg(err instanceof Error ? err.message : 'Search failed');
-    } finally {
-      setSearching(false);
-    }
+    if (debounceRef.current) clearTimeout(debounceRef.current);
+    debounceRef.current = setTimeout(() => {
+      setPage(1);
+      void load(1, q, sort);
+    }, 400);
+    return () => {
+      if (debounceRef.current) clearTimeout(debounceRef.current);
+    };
+    // Intentionally only q — sort changes call load() directly from the Select handler.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [q]);
+
+  const runVariantSearch = useCallback(
+    async (g: string, c?: string, p?: string, force = false) => {
+      if (!g.trim()) {
+        setSearchMsg('Gene is required.');
+        return;
+      }
+      setSearching(true);
+      setSearchOpen(true);
+      setSearchMsg('Searching PubMed…');
+      setSearchResult([]);
+      try {
+        const res = await catalogApi.search({
+          gene: g.trim(),
+          hgvsc: c?.trim() || undefined,
+          hgvsp: p?.trim() || undefined,
+          force_refresh: force,
+        });
+        setSearchResult(res.articles ?? []);
+        const n = res.total_found ?? res.total ?? res.articles?.length ?? 0;
+        setSearchMsg(`Found ${n} articles${res.from_cache ? ' (cached)' : ''}`);
+        await load(1, q, sort);
+        await loadStats();
+      } catch (err) {
+        setSearchMsg(err instanceof Error ? err.message : 'Search failed');
+      } finally {
+        setSearching(false);
+      }
+    },
+    [load, loadStats, q, sort],
+  );
+
+  // Review → Literature deep-link: /literature?gene=&hgvsc=&hgvsp=
+  useEffect(() => {
+    if (deepLinkDone.current) return;
+    const g = searchParams.get('gene');
+    if (!g) return;
+    deepLinkDone.current = true;
+    const c = searchParams.get('hgvsc') ?? '';
+    const p = searchParams.get('hgvsp') ?? '';
+    setGene(g);
+    setHgvsc(c);
+    setHgvsp(p);
+    setSearchOpen(true);
+    void runVariantSearch(g, c, p, false);
+  }, [searchParams, runVariantSearch]);
+
+  const handleSearch = async (e: React.FormEvent) => {
+    e.preventDefault();
+    await runVariantSearch(gene, hgvsc, hgvsp, forceRefresh);
   };
 
   const handleDelete = async (pmid: string) => {
@@ -113,6 +160,7 @@ export function LiteraturePageClient() {
       await catalogApi.deleteArticle(pmid);
       await load(page, q, sort);
       await loadStats();
+      if (detail?.pmid === pmid) setDetail(null);
     } catch (err) {
       alert(err instanceof Error ? err.message : 'Delete failed');
     }
@@ -122,6 +170,7 @@ export function LiteraturePageClient() {
     if (!confirm('Clear ALL literature cache? This cannot be undone.')) return;
     try {
       await catalogApi.clearCache();
+      setPage(1);
       await load(1, q, sort);
       await loadStats();
     } catch (err) {
@@ -129,11 +178,21 @@ export function LiteraturePageClient() {
     }
   };
 
-  const applyFilter = () => {
-    setPage(1);
-    load(1, q, sort);
+  const openDetail = async (a: LiteratureArticle) => {
+    setDetail(a);
+    setDetailLoading(true);
+    try {
+      const full = await catalogApi.getArticle(a.pmid);
+      setDetail(full);
+    } catch {
+      /* keep list row */
+    } finally {
+      setDetailLoading(false);
+    }
   };
+
   const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
+  const disabled = stats?.enabled === false && !stats.db_missing;
 
   return (
     <div>
@@ -161,19 +220,23 @@ export function LiteraturePageClient() {
 
       {stats && (
         <div className="flex flex-wrap gap-2 mb-4">
-          <Chip size="sm" variant="soft">
-            <Chip.Label>{stats.total ?? 0} articles cached</Chip.Label>
-          </Chip>
-          {stats.by_gene &&
-            Object.entries(stats.by_gene)
-              .slice(0, 8)
-              .map(([g, c]) => (
-                <Chip key={g} size="sm" variant="soft">
-                  <Chip.Label>
-                    {g}: {c}
-                  </Chip.Label>
-                </Chip>
-              ))}
+          {disabled ? (
+            <Chip size="sm" variant="soft" color="warning">
+              <Chip.Label>Literature disabled</Chip.Label>
+            </Chip>
+          ) : (
+            <>
+              <Chip size="sm" variant="soft">
+                <Chip.Label>{stats.total_articles ?? stats.total ?? 0} articles</Chip.Label>
+              </Chip>
+              <Chip size="sm" variant="soft">
+                <Chip.Label>{stats.unique_genes ?? 0} genes</Chip.Label>
+              </Chip>
+              <Chip size="sm" variant="soft">
+                <Chip.Label>{stats.total_searches ?? 0} searches</Chip.Label>
+              </Chip>
+            </>
+          )}
         </div>
       )}
 
@@ -190,14 +253,14 @@ export function LiteraturePageClient() {
           onChange={(e) => setQ(e.target.value)}
           placeholder="Search by title, abstract, PMID, author…"
           className="flex-1 min-w-[220px]"
-          onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
         />
         <Select
           selectedKey={sort}
           onSelectionChange={(key) => {
             const next = String(key);
             setSort(next);
-            load(1, q, next);
+            setPage(1);
+            void load(1, q, next);
           }}
         >
           <Select.Trigger className="min-w-[140px]">
@@ -217,7 +280,11 @@ export function LiteraturePageClient() {
         </Select>
       </div>
 
-      <details className="rounded-lg border border-border bg-surface-secondary p-4 mb-4">
+      <details
+        className="rounded-lg border border-border bg-surface-secondary p-4 mb-4"
+        open={searchOpen}
+        onToggle={(e) => setSearchOpen((e.target as HTMLDetailsElement).open)}
+      >
         <summary className="cursor-pointer text-sm font-medium">
           Search literature for a variant
         </summary>
@@ -265,7 +332,7 @@ export function LiteraturePageClient() {
             <ArticleTable
               articles={searchResult}
               onDelete={handleDelete}
-              onDetail={setDetail}
+              onDetail={openDetail}
               compact
             />
           </div>
@@ -277,7 +344,7 @@ export function LiteraturePageClient() {
       ) : articles.length === 0 && !dbMissing ? (
         <p className="text-muted">No articles in cache.</p>
       ) : (
-        <ArticleTable articles={articles} onDelete={handleDelete} onDetail={setDetail} />
+        <ArticleTable articles={articles} onDelete={handleDelete} onDetail={openDetail} />
       )}
 
       {total > PER_PAGE && (
@@ -289,7 +356,7 @@ export function LiteraturePageClient() {
             onPress={() => {
               const n = page - 1;
               setPage(n);
-              load(n, q, sort);
+              void load(n, q, sort);
             }}
           >
             ‹ Prev
@@ -304,7 +371,7 @@ export function LiteraturePageClient() {
             onPress={() => {
               const n = page + 1;
               setPage(n);
-              load(n, q, sort);
+              void load(n, q, sort);
             }}
           >
             Next ›
@@ -323,6 +390,9 @@ export function LiteraturePageClient() {
               <Modal.Body className="max-h-[60vh] overflow-y-auto text-sm leading-relaxed">
                 {detail && (
                   <>
+                    {detailLoading && (
+                      <p className="text-xs text-muted mb-2">Loading full article…</p>
+                    )}
                     <p>
                       <strong>PMID:</strong>{' '}
                       <Link
@@ -333,6 +403,18 @@ export function LiteraturePageClient() {
                         {detail.pmid} ↗
                       </Link>
                     </p>
+                    {detail.doi ? (
+                      <p>
+                        <strong>DOI:</strong>{' '}
+                        <Link
+                          href={`https://doi.org/${String(detail.doi)}`}
+                          target="_blank"
+                          rel="noreferrer"
+                        >
+                          {String(detail.doi)} ↗
+                        </Link>
+                      </p>
+                    ) : null}
                     {detail.title && (
                       <p>
                         <strong>Title:</strong> {detail.title}
@@ -350,7 +432,10 @@ export function LiteraturePageClient() {
                     )}
                     {detail.authors && (
                       <p>
-                        <strong>Authors:</strong> {(detail.authors as string[]).join(', ')}
+                        <strong>Authors:</strong>{' '}
+                        {Array.isArray(detail.authors)
+                          ? detail.authors.join(', ')
+                          : String(detail.authors)}
                       </p>
                     )}
                     {detail.abstract && (
@@ -358,11 +443,21 @@ export function LiteraturePageClient() {
                         <strong>Abstract:</strong> {detail.abstract}
                       </p>
                     )}
-                    {detail.genes && (
-                      <p>
-                        <strong>Genes:</strong> {(detail.genes as string[]).join(', ')}
-                      </p>
-                    )}
+                    <div className="mt-3">
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onPress={() =>
+                          window.open(
+                            `https://pubmed.ncbi.nlm.nih.gov/${detail.pmid}`,
+                            '_blank',
+                            'noopener,noreferrer',
+                          )
+                        }
+                      >
+                        Open in PubMed
+                      </Button>
+                    </div>
                   </>
                 )}
               </Modal.Body>

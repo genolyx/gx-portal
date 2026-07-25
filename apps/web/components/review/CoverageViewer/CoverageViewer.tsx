@@ -5,6 +5,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Eraser, MapPin, Navigation, RefreshCw, Search } from 'lucide-react';
 import { Button, Input, ListBox, Radio, RadioGroup, Select } from '@heroui/react';
 import { reviewApi } from '../../../lib/api/review';
+import { isSgniptReviewData } from '../../../lib/sgnipt-normalize';
 import { useReviewStore } from '../../../lib/store/reviewStore';
 import type { CoverageContext } from '@gx-portal/types';
 import type { IgvBrowserHandle } from './IgvBrowser';
@@ -66,6 +67,8 @@ function variantToCoverageLocus(
 export function CoverageViewer({ orderId }: { orderId: string }) {
   const reviewData = useReviewStore((s) => s.reviewData);
   const selectedVariants = useReviewStore((s) => s.selectedVariants);
+  const isSgnipt = isSgniptReviewData(reviewData as Record<string, unknown> | null);
+  const locusPad = isSgnipt ? 2 : 45;
   const coverageNav = useReviewStore((s) => s.coverageNav);
   const clearCoverageNav = useReviewStore((s) => s.clearCoverageNav);
 
@@ -117,7 +120,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
 
   const defaultLocus = (): string => {
     for (const v of allVariants) {
-      const z = variantToCoverageLocus(v);
+      const z = variantToCoverageLocus(v, locusPad);
       if (z) return z;
       const g = String(v.gene || '').trim();
       if (g) return g;
@@ -126,7 +129,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
   };
 
   const applyVariantJumpUi = (v: (typeof allVariants)[number]) => {
-    const locus = variantToCoverageLocus(v);
+    const locus = variantToCoverageLocus(v, locusPad);
     if (locus) setLocusInput(locus);
     const ch = formatVariantBaseChange(v);
     const pos =
@@ -135,7 +138,9 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
         : '';
     if (ch && pos) {
       setVariantHint(
-        `${ch} at ${pos} — pileup shows all bases (use CFTR IVS9 button for tract review)`,
+        isSgnipt
+          ? `${ch} at ${pos} — pileup shows letters at the variant column (sgNIPT ±${locusPad}bp)`
+          : `${ch} at ${pos} — pileup shows all bases (use CFTR IVS9 button for tract review)`,
       );
     } else if (pos) {
       setVariantHint(`Jumped to ${pos}`);
@@ -319,6 +324,14 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
         </Button>
       </div>
 
+      {isSgnipt && (
+        <div className="border-b border-border bg-surface px-3.5 py-2 text-[11px] leading-relaxed text-muted">
+          <strong className="text-foreground">sgNIPT:</strong> Use <strong className="text-foreground">Jump to variant</strong>{' '}
+          (Ref→Alt in each label). The pileup shows <strong className="text-foreground">letters at the variant column</strong>{' '}
+          (±{locusPad}bp window).
+        </div>
+      )}
+
       {allVariants.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2">
           <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
@@ -452,6 +465,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
             context={context}
             orderId={orderId}
             initialLocus={initialLocus || defaultLocus()}
+            showAllBases={!isSgnipt}
             onLoad={() => {
               setIgvReady(true);
               // Re-apply marker if a variant is selected

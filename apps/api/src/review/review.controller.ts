@@ -6,6 +6,7 @@ import {
   Put,
   Param,
   Body,
+  Query,
   UseGuards,
   Res,
   Req,
@@ -17,7 +18,11 @@ import { Readable } from 'stream';
 import { ApiTags, ApiOperation, ApiBearerAuth } from '@nestjs/swagger';
 import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 import { ReviewService } from './review.service';
-import type { ClassifyRequest, GeneKnowledge, VariantKnowledge } from '@gx-portal/types';
+import type {
+  ClassifyRequest,
+  GeneKnowledgeSaveRequest,
+  VariantKnowledgeSaveRequest,
+} from '@gx-portal/types';
 import type { RequestUser } from '../orders/order-registry.service';
 
 @ApiTags('review')
@@ -121,27 +126,49 @@ export class ReviewController {
   }
 
   @Get(':orderId/gene-knowledge')
-  @ApiOperation({ summary: 'Get Gemini gene knowledge cache' })
-  getGeneKnowledge(@Param('orderId') orderId: string, @Req() req: Request) {
-    return this.reviewService.getGeneKnowledge(orderId, this.user(req));
+  @ApiOperation({ summary: 'Get / enrich gene knowledge cache (uses Configure AI provider)' })
+  getGeneKnowledge(
+    @Param('orderId') orderId: string,
+    @Req() req: Request,
+    @Query('enrich') enrich?: string,
+    @Query('gene') gene?: string,
+    @Query('force') force?: string,
+    @Query('genes') genes?: string,
+    @Query('lang') lang?: string,
+  ) {
+    return this.reviewService.getGeneKnowledge(
+      orderId,
+      {
+        enrich: enrich === '1' || enrich === 'true',
+        force: force === '1' || force === 'true',
+        gene,
+        genes,
+        lang,
+      },
+      this.user(req),
+    );
   }
 
   @Put(':orderId/gene-knowledge')
-  @ApiOperation({ summary: 'Save gene knowledge edits' })
-  putGeneKnowledge(@Param('orderId') orderId: string, @Body() body: GeneKnowledge[], @Req() req: Request) {
-    return this.reviewService.putGeneKnowledge(orderId, body, this.user(req));
-  }
-
-  @Get(':orderId/variant-knowledge')
-  @ApiOperation({ summary: 'Get variant knowledge notes' })
-  getVariantKnowledge(@Param('orderId') orderId: string, @Req() req: Request) {
-    return this.reviewService.getVariantKnowledge(orderId, this.user(req));
+  @ApiOperation({ summary: 'Save one gene knowledge row to SQLite cache' })
+  putGeneKnowledge(
+    @Param('orderId') orderId: string,
+    @Body() body: GeneKnowledgeSaveRequest,
+    @Req() req: Request,
+    @Query('genes') genes?: string,
+  ) {
+    return this.reviewService.putGeneKnowledge(orderId, body, genes, this.user(req));
   }
 
   @Put(':orderId/variant-knowledge')
-  @ApiOperation({ summary: 'Save variant knowledge notes' })
-  putVariantKnowledge(@Param('orderId') orderId: string, @Body() body: VariantKnowledge[], @Req() req: Request) {
-    return this.reviewService.putVariantKnowledge(orderId, body, this.user(req));
+  @ApiOperation({ summary: 'Save per-variant notes to SQLite cache' })
+  putVariantKnowledge(
+    @Param('orderId') orderId: string,
+    @Body() body: VariantKnowledgeSaveRequest,
+    @Req() req: Request,
+    @Query('genes') genes?: string,
+  ) {
+    return this.reviewService.putVariantKnowledge(orderId, body, genes, this.user(req));
   }
 
   @Post(':orderId/pgx-review')

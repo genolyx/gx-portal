@@ -70,6 +70,13 @@ export function reviewOrderKind(
 
   const svc = str(rd._service_code ?? rd.service_code);
   if (svc === 'sgnipt') return 'sgnipt';
+  // Heuristic: sgNIPT result.json often omits service_code but has clinical_findings + FF/panel
+  if (
+    Array.isArray(rd.clinical_findings) &&
+    (rd.panel != null || rd.fetal_fraction_detail != null || rd.sgnipt_status != null)
+  ) {
+    return 'sgnipt';
+  }
 
   const op = (rd.order_params ?? null) as Record<string, unknown> | null;
   const flat = carrierOrderMetaFlat(op);

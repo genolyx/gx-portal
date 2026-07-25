@@ -51,10 +51,28 @@ export class SystemService {
   }
 
   setAiConfig(body: unknown): Promise<unknown> {
-    return this.daemon.patch('/ai/config', body);
+    // Accept nested portal shape or flat daemon shape; always send flat keys.
+    const raw = (body && typeof body === 'object' ? body : {}) as Record<string, unknown>;
+    const ollama = (raw.ollama && typeof raw.ollama === 'object'
+      ? raw.ollama
+      : {}) as Record<string, unknown>;
+    const flat: Record<string, unknown> = {};
+    if (raw.provider != null) flat.provider = raw.provider;
+    const baseUrl = raw.ollama_base_url ?? ollama.base_url;
+    const model = raw.ollama_model ?? ollama.model;
+    if (baseUrl != null) flat.ollama_base_url = baseUrl;
+    if (model != null) flat.ollama_model = model;
+    return this.daemon.patch('/ai/config', flat);
   }
 
   getOllamaModels(): Promise<unknown> {
     return this.daemon.get('/ai/ollama/models');
+  }
+
+  pullOllamaModel(model: string): Promise<Response> {
+    return this.daemon.fetchStream('/ai/ollama/pull', {
+      method: 'POST',
+      body: { model },
+    });
   }
 }

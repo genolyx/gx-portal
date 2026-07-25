@@ -8,11 +8,13 @@ import type {
   ReviewData,
   CoverageContext,
   BamTrack,
-  GeneKnowledge,
-  VariantKnowledge,
+  GeneKnowledgeResponse,
+  GeneKnowledgeSaveRequest,
+  VariantKnowledgeSaveRequest,
   ClassifyRequest,
   ClassifyResponse,
 } from '@gx-portal/types';
+import { normalizeSgniptReviewData } from './sgnipt-normalize';
 
 @Injectable()
 export class ReviewService {
@@ -35,21 +37,26 @@ export class ReviewService {
     const result = await this.daemon.get<ReviewData>(`/order/${orderId}/result`);
     const needsParams = !result?.order_params || typeof result.order_params !== 'object';
     const needsService = !result?.service_code && !result?._service_code;
-    if (!needsParams && !needsService) return result;
 
-    try {
-      const order = await this.daemon.get<Record<string, unknown>>(`/order/${orderId}`);
-      const patch: Partial<ReviewData> = {};
-      if (needsParams && order?.params && typeof order.params === 'object') {
-        patch.order_params = order.params as Record<string, unknown>;
+    let merged = result;
+    if (needsParams || needsService) {
+      try {
+        const order = await this.daemon.get<Record<string, unknown>>(`/order/${orderId}`);
+        const patch: Partial<ReviewData> = {};
+        if (needsParams && order?.params && typeof order.params === 'object') {
+          patch.order_params = order.params as Record<string, unknown>;
+        }
+        if (needsService && order?.service_code) {
+          patch.service_code = String(order.service_code);
+        }
+        merged = { ...result, ...patch };
+      } catch {
+        merged = result;
       }
-      if (needsService && order?.service_code) {
-        patch.service_code = String(order.service_code);
-      }
-      return { ...result, ...patch };
-    } catch {
-      return result;
     }
+
+    // sgNIPT: clinical_findings → variants (+ variant_analysis seed)
+    return normalizeSgniptReviewData(merged);
   }
 
   classifyVariants(orderId: string, body: ClassifyRequest, user?: RequestUser): Promise<ClassifyResponse> {
@@ -191,24 +198,51 @@ export class ReviewService {
     return this.daemon.get(`/order/${orderId}/gene-coverage/${gene}`);
   }
 
-  getGeneKnowledge(orderId: string, user?: RequestUser): Promise<GeneKnowledge[]> {
+  getGeneKnowledge(
+    orderId: string,
+    query: {
+      enrich?: boolean;
+      gene?: string;
+      force?: boolean;
+      genes?: string;
+      lang?: string;
+    } = {},
+    user?: RequestUser,
+  ): Promise<GeneKnowledgeResponse> {
     this.guard(orderId, user);
-    return this.daemon.get<GeneKnowledge[]>(`/order/${orderId}/gene-knowledge`);
+    const params: Record<string, string | number | boolean | undefined> = {};
+    if (query.enrich) params.enrich = true;
+    if (query.force) params.force = true;
+    if (query.gene) params.gene = query.gene;
+    if (query.genes) params.genes = query.genes;
+    if (query.lang) params.lang = query.lang;
+    return this.daemon.get<GeneKnowledgeResponse>(`/order/${orderId}/gene-knowledge`, params);
   }
 
-  putGeneKnowledge(orderId: string, knowledge: GeneKnowledge[], user?: RequestUser): Promise<GeneKnowledge[]> {
+  putGeneKnowledge(
+    orderId: string,
+    body: GeneKnowledgeSaveRequest,
+    genes?: string,
+    user?: RequestUser,
+  ): Promise<unknown> {
     this.guard(orderId, user);
-    return this.daemon.put<GeneKnowledge[]>(`/order/${orderId}/gene-knowledge`, knowledge);
+    const path = genes
+      ? `/order/${orderId}/gene-knowledge?genes=${encodeURIComponent(genes)}`
+      : `/order/${orderId}/gene-knowledge`;
+    return this.daemon.put(path, body);
   }
 
-  getVariantKnowledge(orderId: string, user?: RequestUser): Promise<VariantKnowledge[]> {
+  putVariantKnowledge(
+    orderId: string,
+    body: VariantKnowledgeSaveRequest,
+    genes?: string,
+    user?: RequestUser,
+  ): Promise<unknown> {
     this.guard(orderId, user);
-    return this.daemon.get<VariantKnowledge[]>(`/order/${orderId}/variant-knowledge`);
-  }
-
-  putVariantKnowledge(orderId: string, knowledge: VariantKnowledge[], user?: RequestUser): Promise<VariantKnowledge[]> {
-    this.guard(orderId, user);
-    return this.daemon.put<VariantKnowledge[]>(`/order/${orderId}/variant-knowledge`, knowledge);
+    const path = genes
+      ? `/order/${orderId}/variant-knowledge?genes=${encodeURIComponent(genes)}`
+      : `/order/${orderId}/variant-knowledge`;
+    return this.daemon.put(path, body);
   }
 
   savePgxReview(orderId: string, body: unknown, user?: RequestUser): Promise<unknown> {

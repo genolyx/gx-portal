@@ -128,15 +128,21 @@ export class DaemonService {
    */
   async fetchStream(
     path: string,
-    opts?: { method?: 'GET' | 'HEAD'; range?: string },
+    opts?: { method?: 'GET' | 'HEAD' | 'POST'; range?: string; body?: unknown },
   ): Promise<Response> {
     const url = `${this._baseUrl}${path}`;
     const headers: Record<string, string> = {};
     if (this._apiKey) headers['X-API-Key'] = this._apiKey;
     if (opts?.range) headers['Range'] = opts.range;
+    const method = opts?.method ?? 'GET';
+    if (opts?.body !== undefined) headers['Content-Type'] = 'application/json';
 
     try {
-      return await fetch(url, { method: opts?.method ?? 'GET', headers });
+      return await fetch(url, {
+        method,
+        headers,
+        body: opts?.body !== undefined ? JSON.stringify(opts.body) : undefined,
+      });
     } catch (err) {
       this.logger.error(`Daemon unreachable: ${(err as Error).message}`);
       throw new HttpException('gx-daemon unreachable', HttpStatus.BAD_GATEWAY);

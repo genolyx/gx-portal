@@ -280,5 +280,16 @@ export interface ReviewData {
     fetal_specific_detail?: unknown;
     pathogenic_details?: unknown;
   };
+  /** sgNIPT-native fields from result.json */
+  clinical_findings?: unknown[];
+  summary?: Record<string, unknown>;
+  fetal_fraction_detail?: Record<string, unknown>;
+  fetal_fraction_used?: number;
+  panel?: string;
+  sgnipt_status?: string;
+  sgnipt_status_flags?: string[];
+  fastq_qc?: Record<string, unknown>;
+  bam_qc?: Record<string, unknown>;
+  variant_analysis_summary?: Record<string, unknown>;
   [key: string]: unknown;
 }

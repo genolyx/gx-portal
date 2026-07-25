@@ -47,8 +47,20 @@ export interface LiteratureArticle {
 export interface LiteratureResponse {
   articles: LiteratureArticle[];
   total: number;
+  total_found?: number;
   page?: number;
   per_page?: number;
+  db_missing?: boolean;
+  from_cache?: boolean;
+}
+
+export interface LiteratureStats {
+  enabled?: boolean;
+  total?: number;
+  total_articles?: number;
+  unique_genes?: number;
+  total_searches?: number;
+  genes?: string[];
   db_missing?: boolean;
 }
 
@@ -81,7 +93,7 @@ export const catalogApi = {
   deletePanel: (id: string) => api.delete(`/panels/${encodeURIComponent(id)}`),
 
   // Literature
-  getStats: () => api.get<{ total?: number; by_gene?: Record<string, number> }>('/literature/stats'),
+  getStats: () => api.get<LiteratureStats>('/literature/stats'),
   getArticles: (params: { page?: number; per_page?: number; q?: string; sort?: string }) => {
     const qs = new URLSearchParams();
     if (params.page)     qs.set('page',     String(params.page));

@@ -49,6 +49,8 @@ interface Props {
   orderId: string;
   /** Initial locus when creating the browser (Portal: variant ±45bp or gene). */
   initialLocus?: string;
+  /** Portal: carrier true, sgNIPT false (letters only at variant column). */
+  showAllBases?: boolean;
   onLoad?: () => void;
 }
 
@@ -72,7 +74,7 @@ async function ensureIgv(): Promise<void> {
 }
 
 const IgvBrowser = forwardRef<IgvBrowserHandle, Props>(function IgvBrowser(
-  { context, orderId, initialLocus, onLoad },
+  { context, orderId, initialLocus, showAllBases = true, onLoad },
   ref,
 ) {
   const hostRef = useRef<HTMLDivElement>(null);
@@ -216,7 +218,7 @@ const IgvBrowser = forwardRef<IgvBrowserHandle, Props>(function IgvBrowser(
             height: trackH,
             maxHeight: Math.max(trackH + 80, 720),
             displayMode: 'EXPANDED',
-            showAllBases: true,
+            showAllBases,
             showMismatches: true,
             showSoftClips: true,
             showInsertionText: true,
@@ -234,7 +236,7 @@ const IgvBrowser = forwardRef<IgvBrowserHandle, Props>(function IgvBrowser(
             type: 'alignment',
             height: trackH,
             displayMode: 'EXPANDED',
-            showAllBases: true,
+            showAllBases,
             showSoftClips: true,
           });
         }

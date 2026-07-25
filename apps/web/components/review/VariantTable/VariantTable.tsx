@@ -1,7 +1,8 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
-import { Button, Card, Checkbox, Chip, Input, ListBox, Select } from '@heroui/react';
+import NextLink from 'next/link';
+import { Button, Card, Checkbox, Chip, Input, Link, ListBox, Select } from '@heroui/react';
 import {
   ChevronDown,
   ChevronUp,
@@ -13,7 +14,7 @@ import {
 } from 'lucide-react';
 import { reviewApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import type { Variant, AcmgClass } from '@gx-portal/types';
+import type { Variant, AcmgClass, VariantLiterature } from '@gx-portal/types';
 
 function TableCheckbox({
   isSelected,
@@ -230,8 +231,55 @@ function VariantDetail({ variant: v, onClose }: { variant: Variant; onClose: () 
             <><dt className="font-semibold text-muted">Curated notes</dt><dd className="m-0">{v.curated_notes}</dd></>
           )}
         </dl>
+        <LiteratureBlock variant={v} />
       </Card.Content>
     </Card>
+  );
+}
+
+function LiteratureBlock({ variant: v }: { variant: Variant }) {
+  const lit = v.literature as VariantLiterature | undefined;
+  if (!lit || !(lit.total_found && lit.total_found > 0)) return null;
+  const titles = lit.top_titles ?? [];
+  const pmids = lit.pmids ?? [];
+  const qs = new URLSearchParams({ gene: v.gene || '' });
+  if (v.hgvsc) qs.set('hgvsc', v.hgvsc);
+  if (v.hgvsp) qs.set('hgvsp', v.hgvsp);
+
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface-secondary p-3">
+      <div className="mb-2 flex flex-wrap items-center gap-2">
+        <span className="text-xs font-semibold">Literature</span>
+        <span className="text-xs text-muted">
+          {lit.total_found} papers{lit.from_cache ? ' (cached)' : ' (new)'}
+        </span>
+        <NextLink
+          href={`/literature?${qs.toString()}`}
+          className="ml-auto text-xs text-accent underline-offset-2 hover:underline"
+        >
+          View all ↗
+        </NextLink>
+      </div>
+      <div className="flex flex-col gap-1">
+        {titles.slice(0, 5).map((t, i) => (
+          <div key={`${pmids[i] ?? i}-${t}`} className="flex gap-2 text-xs text-muted">
+            {pmids[i] ? (
+              <Link
+                href={`https://pubmed.ncbi.nlm.nih.gov/${pmids[i]}/`}
+                target="_blank"
+                rel="noreferrer"
+                className="shrink-0 font-mono"
+              >
+                {pmids[i]}
+              </Link>
+            ) : (
+              <span className="shrink-0 w-5" />
+            )}
+            <span>{t}</span>
+          </div>
+        ))}
+      </div>
+    </div>
   );
 }
 

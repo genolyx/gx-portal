@@ -1,5 +1,7 @@
-import { Controller, Get, Put, Body, Query, UseGuards } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Query, Res, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
+import type { Response } from 'express';
+import { Readable } from 'stream';
 import { SystemService } from './system.service';
 import { HostResourcesService } from './host-resources.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
@@ -88,6 +90,39 @@ export class SystemController {
   @ApiOperation({ summary: 'List available Ollama models from daemon' })
   getOllamaModels() {
     return this.systemService.getOllamaModels();
+  }
+
+  @Post('ai/ollama/pull')
+  @ApiOperation({ summary: 'Pull an Ollama model (NDJSON progress stream)' })
+  async pullOllamaModel(@Body() body: { model?: string }, @Res() res: Response) {
+    const model = (body?.model || '').trim();
+    if (!model) {
+      throw new HttpException('model name required', HttpStatus.BAD_REQUEST);
+    }
+    const upstream = await this.systemService.pullOllamaModel(model);
+    if (!upstream.ok || !upstream.body) {
+      const text = await upstream.text().catch(() => '');
+      throw new HttpException(text || `Ollama pull failed (${upstream.status})`, upstream.status || 502);
+    }
+    res.status(upstream.status);
+    res.setHeader('Content-Type', upstream.headers.get('content-type') || 'application/x-ndjson');
+    res.setHeader('X-Accel-Buffering', 'no');
+    const reader = upstream.body.getReader();
+    const nodeStream = new Readable({
+      async read() {
+        try {
+          const { done, value } = await reader.read();
+          if (done) {
+            this.push(null);
+            return;
+          }
+          this.push(Buffer.from(value));
+        } catch (err) {
+          this.destroy(err as Error);
+        }
+      },
+    });
+    nodeStream.pipe(res);
   }
 
   @Get('host-resources')

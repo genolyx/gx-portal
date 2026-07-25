@@ -1,8 +1,15 @@
 'use client';
 
 import { useEffect, useMemo, useState } from 'react';
-import { Button, toast } from '@heroui/react';
-import { Save } from 'lucide-react';
+import {
+  Button,
+  Checkbox,
+  Chip,
+  Input,
+  Tabs,
+  toast,
+} from '@heroui/react';
+import { ListChecks, ListX, Save } from 'lucide-react';
 import { orderArtifactUrl, reviewApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
 import { reviewOrderKind } from '../../../lib/review-tabs';
@@ -17,6 +24,63 @@ import type {
   ReviewData,
 } from '@gx-portal/types';
 
+type PgxTableTab = 'pharmcat' | 'extended';
+type SortState = { col: string; asc: boolean };
+
+function TableCheckbox({
+  isSelected,
+  onChange,
+  'aria-label': ariaLabel,
+}: {
+  isSelected: boolean;
+  onChange: (selected: boolean) => void;
+  'aria-label': string;
+}) {
+  return (
+    <Checkbox
+      isSelected={isSelected}
+      onChange={onChange}
+      aria-label={ariaLabel}
+      className="inline-flex justify-center"
+    >
+      <Checkbox.Content>
+        <Checkbox.Control>
+          <Checkbox.Indicator />
+        </Checkbox.Control>
+      </Checkbox.Content>
+    </Checkbox>
+  );
+}
+
+function SortableTh({
+  label,
+  sortKey,
+  current,
+  asc,
+  onSort,
+  title,
+}: {
+  label: string;
+  sortKey: string;
+  current: string;
+  asc: boolean;
+  onSort: (key: string) => void;
+  title?: string;
+}) {
+  const active = current === sortKey;
+  const arrow = active ? (asc ? ' ▲' : ' ▼') : '';
+  return (
+    <th
+      className={`sticky top-0 z-10 cursor-pointer select-none bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted hover:text-accent hover:underline ${active ? 'text-accent' : ''}`}
+      title={title}
+      onClick={() => onSort(sortKey)}
+    >
+      {label}
+      {arrow && <span className="ml-0.5 text-[9px] opacity-65">{arrow}</span>}
+    </th>
+  );
+}
+
 export function PgxReview({
   orderId,
   onOpenApoeIgv,
@@ -27,21 +91,17 @@ export function PgxReview({
   const { reviewData, setReviewData } = useReviewStore();
   const pgx = reviewData?.pgx;
 
-  // ─── Local state for checkboxes ───
   const [geneConfirmed, setGeneConfirmed] = useState<Record<string, boolean>>({});
   const [customConfirmed, setCustomConfirmed] = useState<Record<string, boolean>>({});
   const [includeApoePdf, setIncludeApoePdf] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [tableTab, setTableTab] = useState<PgxTableTab>('pharmcat');
 
-  // Filter state
   const [geneFilter, setGeneFilter] = useState('');
   const [customFilter, setCustomFilter] = useState('');
+  const [geneSort, setGeneSort] = useState<SortState>({ col: '', asc: true });
+  const [customSort, setCustomSort] = useState<SortState>({ col: '', asc: true });
 
-  // Sort state
-  const [geneSort, setGeneSort] = useState<{ col: string; asc: boolean }>({ col: '', asc: true });
-  const [customSort, setCustomSort] = useState<{ col: string; asc: boolean }>({ col: '', asc: true });
-
-  // Sync local state from pgx data
   useEffect(() => {
     if (!pgx) return;
     const pr = (pgx.portal_review && typeof pgx.portal_review === 'object' ? pgx.portal_review : {}) as PgxPortalReview;
@@ -58,7 +118,6 @@ export function PgxReview({
     setCustomConfirmed(cc);
   }, [pgx]);
 
-  // ─── Empty / status states ───
   if (!pgx || typeof pgx !== 'object') {
     return (
       <p className="py-8 text-center text-muted">
@@ -87,7 +146,6 @@ export function PgxReview({
   const art = (pgx.artifacts && typeof pgx.artifacts === 'object' ? pgx.artifacts : {}) as PgxArtifacts;
   const apoeDiplotype = pgx.apoe_diplotype_for_report as PgxApoeDiplotypeForReport | string | undefined;
 
-  // Derive APOE IGV path
   let apoeIgvRel = '';
   const ve = reviewData?.dark_genes?.visual_evidence;
   const igvRel = ve?.igv_report_html || '';
@@ -101,7 +159,6 @@ export function PgxReview({
   const isProactive = reviewOrderKind(reviewData as Record<string, unknown>) === 'proactive';
   const showApoeCard = isProactive && customGenes.some((r) => String(r.gene || '').trim().toUpperCase() === 'APOE');
 
-  // ─── Artifact links ───
   const artifactLinks: Array<{ label: string; url: string }> = [];
   if (art.pgx_summary_txt && orderId) {
     artifactLinks.push({
@@ -128,7 +185,15 @@ export function PgxReview({
     });
   }
 
-  // ─── Save handler ───
+  const showPharmcatTab = genes.length > 0 || customGenes.length === 0;
+  const showExtendedTab = customGenes.length > 0;
+  const effectiveTab: PgxTableTab =
+    tableTab === 'extended' && showExtendedTab
+      ? 'extended'
+      : showPharmcatTab
+        ? 'pharmcat'
+        : 'extended';
+
   const handleSave = async () => {
     setSaving(true);
     try {
@@ -169,7 +234,6 @@ export function PgxReview({
     <div>
       <p className="mb-2.5 text-[11px] text-muted">PharmCAT / pharmacogenomics</p>
 
-      {/* APOE phasing banner */}
       {aph && aph.show_alert && (
         <div className="mb-3.5 rounded-xl border border-amber-500/55 bg-amber-100/20 p-3 text-xs leading-relaxed">
           <strong className="mb-1.5 block">APOE phasing</strong>
@@ -183,7 +247,6 @@ export function PgxReview({
         </p>
       )}
 
-      {/* Proactive APOE Card */}
       {showApoeCard && (
         <ApoeProactiveCard
           customGenes={customGenes}
@@ -197,7 +260,6 @@ export function PgxReview({
         />
       )}
 
-      {/* Meta line */}
       {(meta.tool_version || meta.genome_build || meta.exit_status != null) && (
         <p className="mb-2.5 text-xs text-muted">
           {[
@@ -208,42 +270,83 @@ export function PgxReview({
         </p>
       )}
 
-      {/* Error message */}
       {pgx.message && pgx.status === 'error' && (
         <p className="mb-2.5 text-[13px] text-danger">{String(pgx.message)}</p>
       )}
 
-      {/* PharmCAT genes table */}
-      {genes.length > 0 ? (
-        <PharmcatGenesTable
-          genes={genes}
-          confirmed={geneConfirmed}
-          onToggle={(gene, v) => setGeneConfirmed((s) => ({ ...s, [gene]: v }))}
-          filter={geneFilter}
-          onFilterChange={setGeneFilter}
-          sort={geneSort}
-          onSort={setGeneSort}
-        />
-      ) : (
-        <p className="mb-3 text-xs text-muted">
-          No gene rows parsed yet. Reprocess results after <code>pgx/pgx_result.json</code> exists (PharmCAT phenotype JSON). Until then, use the raw summary below.
-        </p>
+      {(showPharmcatTab || showExtendedTab) && (
+        <Tabs
+          selectedKey={effectiveTab}
+          onSelectionChange={(key) => setTableTab(key as PgxTableTab)}
+          className="mb-3"
+        >
+          <Tabs.ListContainer>
+            <Tabs.List aria-label="PGx tables">
+              {showPharmcatTab && (
+                <Tabs.Tab id="pharmcat" className="relative">
+                  PharmCAT genes ({genes.length})
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              )}
+              {showExtendedTab && (
+                <Tabs.Tab id="extended" className="relative">
+                  Extended PGx Panel ({customGenes.length})
+                  <Tabs.Indicator />
+                </Tabs.Tab>
+              )}
+            </Tabs.List>
+          </Tabs.ListContainer>
+
+          {showPharmcatTab && (
+            <Tabs.Panel id="pharmcat" className="pt-3">
+              {genes.length > 0 ? (
+                <PharmcatGenesTable
+                  genes={genes}
+                  confirmed={geneConfirmed}
+                  onToggle={(gene, v) => setGeneConfirmed((s) => ({ ...s, [gene]: v }))}
+                  onSelectKeys={(keys, value) => {
+                    setGeneConfirmed((s) => {
+                      const next = { ...s };
+                      keys.forEach((k) => { next[k] = value; });
+                      return next;
+                    });
+                  }}
+                  filter={geneFilter}
+                  onFilterChange={setGeneFilter}
+                  sort={geneSort}
+                  onSort={setGeneSort}
+                />
+              ) : (
+                <p className="py-8 text-center text-muted">
+                  No gene rows parsed yet. Reprocess results after <code>pgx/pgx_result.json</code> exists (PharmCAT phenotype JSON). Until then, use the raw summary below.
+                </p>
+              )}
+            </Tabs.Panel>
+          )}
+
+          {showExtendedTab && (
+            <Tabs.Panel id="extended" className="pt-3">
+              <ExtendedPanelTable
+                genes={customGenes}
+                confirmed={customConfirmed}
+                onToggle={(key, v) => setCustomConfirmed((s) => ({ ...s, [key]: v }))}
+                onSelectKeys={(keys, value) => {
+                  setCustomConfirmed((s) => {
+                    const next = { ...s };
+                    keys.forEach((k) => { next[k] = value; });
+                    return next;
+                  });
+                }}
+                filter={customFilter}
+                onFilterChange={setCustomFilter}
+                sort={customSort}
+                onSort={setCustomSort}
+              />
+            </Tabs.Panel>
+          )}
+        </Tabs>
       )}
 
-      {/* Extended PGx Panel */}
-      {customGenes.length > 0 && (
-        <ExtendedPanelTable
-          genes={customGenes}
-          confirmed={customConfirmed}
-          onToggle={(key, v) => setCustomConfirmed((s) => ({ ...s, [key]: v }))}
-          filter={customFilter}
-          onFilterChange={setCustomFilter}
-          sort={customSort}
-          onSort={setCustomSort}
-        />
-      )}
-
-      {/* Save button */}
       <div className="mt-4 flex flex-wrap items-center gap-2.5">
         <Button
           variant="primary"
@@ -260,7 +363,6 @@ export function PgxReview({
         </span>
       </div>
 
-      {/* Pipeline output details */}
       {(pgx.pgx_dir || artifactLinks.length > 0) && (
         <details className="mt-3">
           <summary className="cursor-pointer select-none text-[11px] text-muted">
@@ -290,16 +392,32 @@ export function PgxReview({
   );
 }
 
-// ──────────────────────────────────────────────────────────────────
-// PharmCAT genes table
-// ──────────────────────────────────────────────────────────────────
-
-type SortState = { col: string; asc: boolean };
+function sortRows(rows: PgxGeneResult[], sort: SortState): PgxGeneResult[] {
+  if (!sort.col) return rows;
+  return [...rows].sort((a, b) => {
+    let av: string;
+    let bv: string;
+    if (sort.col === 'allele1_function') {
+      av = [a.allele1_function, a.allele2_function].filter(Boolean).join(' / ').toLowerCase();
+      bv = [b.allele1_function, b.allele2_function].filter(Boolean).join(' / ').toLowerCase();
+    } else if (sort.col === 'is_variant') {
+      const aVar = a.is_variant || (!!a.zygosity && a.zygosity !== 'homozygous_ref');
+      const bVar = b.is_variant || (!!b.zygosity && b.zygosity !== 'homozygous_ref');
+      av = aVar ? '1' : '0';
+      bv = bVar ? '1' : '0';
+    } else {
+      av = String((a as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
+      bv = String((b as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
+    }
+    return sort.asc ? av.localeCompare(bv) : bv.localeCompare(av);
+  });
+}
 
 function PharmcatGenesTable({
   genes,
   confirmed,
   onToggle,
+  onSelectKeys,
   filter,
   onFilterChange,
   sort,
@@ -308,6 +426,7 @@ function PharmcatGenesTable({
   genes: PgxGeneResult[];
   confirmed: Record<string, boolean>;
   onToggle: (gene: string, v: boolean) => void;
+  onSelectKeys: (keys: string[], value: boolean) => void;
   filter: string;
   onFilterChange: (v: string) => void;
   sort: SortState;
@@ -324,105 +443,133 @@ function PharmcatGenesTable({
     });
   }, [genes, q]);
 
-  const sorted = useMemo(() => {
-    if (!sort.col) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = String((a as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
-      const bv = String((b as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
-      return sort.asc ? av.localeCompare(bv) : bv.localeCompare(av);
-    });
-  }, [filtered, sort]);
-
-  const cols: Array<{ key: string; label: string; sortable: boolean }> = [
-    { key: '_chk', label: '✓', sortable: false },
-    { key: 'gene', label: 'Gene', sortable: true },
-    { key: 'guideline_source', label: 'Source', sortable: true },
-    { key: 'diplotype', label: 'Diplotype', sortable: true },
-    { key: 'phenotype', label: 'Phenotype', sortable: true },
-    { key: '_fn', label: 'Allele Functions', sortable: true },
-    { key: 'category', label: 'Category', sortable: true },
-  ];
+  const sorted = useMemo(() => sortRows(filtered, sort), [filtered, sort]);
+  const visibleKeys = sorted.map((g) => (g.gene ?? '').trim()).filter(Boolean);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => confirmed[k]);
+  const selectedCount = Object.values(confirmed).filter(Boolean).length;
 
   const handleSort = (col: string) => {
     onSort(sort.col === col ? { col, asc: !sort.asc } : { col, asc: true });
   };
 
+  const thProps = { current: sort.col, asc: sort.asc, onSort: handleSort };
+
   return (
-    <div className="mb-3.5">
-      <input
-        type="text"
-        placeholder="Filter by gene, phenotype, diplotype, actionable…"
-        value={filter}
-        onChange={(e) => onFilterChange(e.target.value)}
-        className="mb-2 w-full max-w-[360px] rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs"
-      />
-      <div className="max-h-[55vh] overflow-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              {cols.map((c) => (
-                <th
-                  key={c.key}
-                  className={`border-b border-border px-2 py-1.5 text-left text-[11px] font-semibold ${c.key === '_chk' ? 'w-[50px] text-center' : ''} ${c.sortable ? 'cursor-pointer select-none hover:text-foreground' : ''}`}
-                  onClick={c.sortable ? () => handleSort(c.key === '_fn' ? 'allele1_function' : c.key) : undefined}
-                  title={c.key === '_chk' ? 'Include on PDF report' : undefined}
-                >
-                  {c.label}
-                  {c.sortable && sort.col === (c.key === '_fn' ? 'allele1_function' : c.key) && (
-                    <span className="ml-0.5">{sort.asc ? '↑' : '↓'}</span>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((row) => {
-              const g = (row.gene ?? '').trim();
-              if (!g) return null;
-              const fn1 = (row.allele1_function ?? '').trim();
-              const fn2 = (row.allele2_function ?? '').trim();
-              const fn = [fn1, fn2].filter(Boolean).join(' / ') || '—';
-              const cat = (row.category || '').trim();
-              const isActionable = cat === 'actionable';
-              return (
-                <tr key={g} className={isActionable ? 'bg-amber-700/[.04]' : undefined}>
-                  <td className="px-2 py-1.5 text-center">
-                    <input
-                      type="checkbox"
-                      checked={!!confirmed[g]}
-                      onChange={(e) => onToggle(g, e.target.checked)}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 font-semibold">{g}</td>
-                  <td className="px-2 py-1.5">{row.guideline_source ?? ''}</td>
-                  <td className="px-2 py-1.5 font-mono text-[11px]">{row.diplotype ?? ''}</td>
-                  <td className="px-2 py-1.5">{row.phenotype ?? ''}</td>
-                  <td className="max-w-56 px-2 py-1.5 text-[11px]">{fn}</td>
-                  <td className="px-2 py-1.5">
-                    {isActionable ? (
-                      <span className="rounded bg-amber-700/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Actionable</span>
-                    ) : (
-                      <span className="rounded bg-muted/10 px-1.5 py-0.5 text-[10px] opacity-60">Normal</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+    <div>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search gene, phenotype, diplotype…"
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          className="max-w-[260px]"
+          aria-label="Filter PharmCAT genes"
+        />
+        <span className="whitespace-nowrap text-[11px] text-muted">
+          {sorted.length} gene{sorted.length !== 1 ? 's' : ''}
+        </span>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => onSelectKeys(visibleKeys, true)}
+            className="gap-1.5"
+          >
+            <ListChecks size={14} strokeWidth={2} aria-hidden />
+            Select All Visible
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => onSelectKeys(Object.keys(confirmed), false)}
+            className="gap-1.5"
+          >
+            <ListX size={14} strokeWidth={2} aria-hidden />
+            Deselect All
+          </Button>
+          <span className="whitespace-nowrap text-[11px] text-muted">
+            {selectedCount} selected
+          </span>
+        </div>
       </div>
+
+      {sorted.length === 0 ? (
+        <p className="py-8 text-center text-muted">No genes match the current filters.</p>
+      ) : (
+        <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="sticky top-0 z-10 w-10 bg-surface px-2.5 py-1.5 text-center" title="Include on PDF report">
+                  <TableCheckbox
+                    isSelected={allVisibleSelected}
+                    aria-label="Select all visible PharmCAT genes"
+                    onChange={(checked) => onSelectKeys(visibleKeys, checked)}
+                  />
+                </th>
+                <SortableTh label="Gene" sortKey="gene" {...thProps} />
+                <SortableTh label="Source" sortKey="guideline_source" {...thProps} />
+                <SortableTh label="Diplotype" sortKey="diplotype" {...thProps} />
+                <SortableTh label="Phenotype" sortKey="phenotype" {...thProps} />
+                <SortableTh label="Allele Functions" sortKey="allele1_function" {...thProps} />
+                <SortableTh label="Category" sortKey="category" {...thProps} />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row) => {
+                const g = (row.gene ?? '').trim();
+                if (!g) return null;
+                const fn1 = (row.allele1_function ?? '').trim();
+                const fn2 = (row.allele2_function ?? '').trim();
+                const fn = [fn1, fn2].filter(Boolean).join(' / ') || '—';
+                const cat = (row.category || '').trim();
+                const isActionable = cat === 'actionable';
+                const selected = !!confirmed[g];
+                const rowClass = selected
+                  ? 'bg-accent/10'
+                  : isActionable
+                    ? 'bg-amber-700/[.04]'
+                    : 'hover:bg-accent/5';
+                return (
+                  <tr key={g} className={`border-b border-border ${rowClass}`}>
+                    <td className="px-2.5 py-1 text-center">
+                      <TableCheckbox
+                        isSelected={selected}
+                        aria-label={`Include ${g}`}
+                        onChange={(checked) => onToggle(g, checked)}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-2.5 py-1"><strong>{g}</strong></td>
+                    <td className="whitespace-nowrap px-2.5 py-1 text-muted">{row.guideline_source || '—'}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1 font-mono"><code>{row.diplotype || '—'}</code></td>
+                    <td className="px-2.5 py-1">{row.phenotype || '—'}</td>
+                    <td className="max-w-[180px] truncate px-2.5 py-1 text-muted" title={fn}>{fn}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1">
+                      {isActionable ? (
+                        <Chip color="warning" size="sm" variant="soft">
+                          <Chip.Label>Actionable</Chip.Label>
+                        </Chip>
+                      ) : (
+                        <Chip size="sm" variant="soft">
+                          <Chip.Label>Normal</Chip.Label>
+                        </Chip>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
-
-// ──────────────────────────────────────────────────────────────────
-// Extended PGx Panel table
-// ──────────────────────────────────────────────────────────────────
 
 function ExtendedPanelTable({
   genes,
   confirmed,
   onToggle,
+  onSelectKeys,
   filter,
   onFilterChange,
   sort,
@@ -431,6 +578,7 @@ function ExtendedPanelTable({
   genes: PgxGeneResult[];
   confirmed: Record<string, boolean>;
   onToggle: (key: string, v: boolean) => void;
+  onSelectKeys: (keys: string[], value: boolean) => void;
   filter: string;
   onFilterChange: (v: string) => void;
   sort: SortState;
@@ -447,42 +595,25 @@ function ExtendedPanelTable({
     });
   }, [genes, q]);
 
-  const sorted = useMemo(() => {
-    if (!sort.col) return filtered;
-    return [...filtered].sort((a, b) => {
-      const av = String((a as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
-      const bv = String((b as Record<string, unknown>)[sort.col] ?? '').toLowerCase();
-      return sort.asc ? av.localeCompare(bv) : bv.localeCompare(av);
-    });
-  }, [filtered, sort]);
+  const sorted = useMemo(() => sortRows(filtered, sort), [filtered, sort]);
+  const visibleKeys = sorted.map((g) => `${g.gene}|${g.rsid ?? ''}`);
+  const allVisibleSelected = visibleKeys.length > 0 && visibleKeys.every((k) => confirmed[k]);
+  const selectedCount = Object.values(confirmed).filter(Boolean).length;
 
   const handleSort = (col: string) => {
     onSort(sort.col === col ? { col, asc: !sort.asc } : { col, asc: true });
   };
 
-  const cols: Array<{ key: string; label: string; sortable: boolean }> = [
-    { key: '_chk', label: '✓', sortable: false },
-    { key: 'gene', label: 'Gene', sortable: true },
-    { key: 'rsid', label: 'rsID', sortable: true },
-    { key: 'variant_name', label: 'Variant', sortable: true },
-    { key: 'genotype', label: 'Genotype', sortable: true },
-    { key: 'zygosity', label: 'Zygosity', sortable: true },
-    { key: 'clinical_significance', label: 'Significance', sortable: true },
-    { key: 'drugs', label: 'Affected Drug(s)', sortable: true },
-    { key: 'evidence_level', label: 'Evidence', sortable: true },
-    { key: '_status', label: 'Status', sortable: true },
-  ];
+  const thProps = { current: sort.col, asc: sort.asc, onSort: handleSort };
 
   return (
-    <div className="mb-3.5">
-      <h4 className="mb-2 mt-4 text-[13px] font-semibold">Extended PGx Panel</h4>
-
+    <div>
       <details className="mb-3">
         <summary className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-muted">
           <span>Column guide &amp; evidence levels</span>
           <span className="text-[10px] font-normal">(show reference)</span>
         </summary>
-        <div className="mt-2.5 grid grid-cols-1 gap-4 rounded-lg border border-border bg-surface p-3 text-[11px] leading-relaxed md:grid-cols-2">
+        <div className="mt-2.5 grid grid-cols-1 gap-4 rounded-md border border-border bg-surface p-3 text-[11px] leading-relaxed md:grid-cols-2">
           <div>
             <strong className="text-xs">Column guide</strong><br />
             <b>Status</b> — <span className="rounded bg-amber-700/15 px-1 text-[10px] text-amber-700">Variant</span> = patient carries a non-reference allele;{' '}
@@ -503,67 +634,123 @@ function ExtendedPanelTable({
         </div>
       </details>
 
-      <input
-        type="text"
-        placeholder="Filter by gene, rsID, drug, significance, variant…"
-        value={filter}
-        onChange={(e) => onFilterChange(e.target.value)}
-        className="mb-2 w-full max-w-[360px] rounded-lg border border-border bg-surface px-2.5 py-1.5 text-xs"
-      />
-      <div className="max-h-[50vh] overflow-auto">
-        <table className="w-full border-collapse text-xs">
-          <thead>
-            <tr>
-              {cols.map((c) => (
-                <th
-                  key={c.key}
-                  className={`border-b border-border px-2 py-1.5 text-left text-[11px] font-semibold ${c.key === '_chk' ? 'w-[50px] text-center' : ''} ${c.sortable ? 'cursor-pointer select-none hover:text-foreground' : ''}`}
-                  onClick={c.sortable ? () => handleSort(c.key === '_status' ? 'is_variant' : c.key) : undefined}
-                  title={c.key === '_chk' ? 'Include on PDF report' : undefined}
-                >
-                  {c.label}
-                  {c.sortable && sort.col === (c.key === '_status' ? 'is_variant' : c.key) && (
-                    <span className="ml-0.5">{sort.asc ? '↑' : '↓'}</span>
-                  )}
-                </th>
-              ))}
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.map((row, idx) => {
-              const key = `${row.gene}|${row.rsid ?? ''}`;
-              const isVar = row.is_variant || (!!row.zygosity && row.zygosity !== 'homozygous_ref');
-              const zyg = (row.zygosity || '').replace(/_/g, ' ');
-              return (
-                <tr key={`${key}-${idx}`} className={isVar ? 'bg-amber-700/[.04]' : undefined}>
-                  <td className="px-2 py-1.5 text-center">
-                    <input
-                      type="checkbox"
-                      checked={!!confirmed[key]}
-                      onChange={(e) => onToggle(key, e.target.checked)}
-                    />
-                  </td>
-                  <td className="px-2 py-1.5 font-semibold">{row.gene || ''}</td>
-                  <td className="px-2 py-1.5 text-[11px]">{row.rsid || ''}</td>
-                  <td className="px-2 py-1.5 text-[11px]">{row.variant_name || ''}</td>
-                  <td className="px-2 py-1.5 font-mono text-[11px]">{row.genotype || ''}</td>
-                  <td className="px-2 py-1.5 text-[11px]">{zyg}</td>
-                  <td className="px-2 py-1.5 text-[11px]">{row.clinical_significance || ''}</td>
-                  <td className="max-w-56 px-2 py-1.5 text-[11px]">{row.drugs || ''}</td>
-                  <td className="px-2 py-1.5 text-[11px]">{row.evidence_level || ''}</td>
-                  <td className="px-2 py-1.5">
-                    {isVar ? (
-                      <span className="rounded bg-amber-700/15 px-1.5 py-0.5 text-[10px] font-medium text-amber-700">Variant</span>
-                    ) : (
-                      <span className="rounded bg-muted/10 px-1.5 py-0.5 text-[10px] opacity-60">Ref</span>
-                    )}
-                  </td>
-                </tr>
-              );
-            })}
-          </tbody>
-        </table>
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Search gene, rsID, drug, significance…"
+          value={filter}
+          onChange={(e) => onFilterChange(e.target.value)}
+          className="max-w-[260px]"
+          aria-label="Filter extended PGx panel"
+        />
+        <span className="whitespace-nowrap text-[11px] text-muted">
+          {sorted.length} row{sorted.length !== 1 ? 's' : ''}
+        </span>
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => onSelectKeys(visibleKeys, true)}
+            className="gap-1.5"
+          >
+            <ListChecks size={14} strokeWidth={2} aria-hidden />
+            Select All Visible
+          </Button>
+          <Button
+            size="sm"
+            variant="ghost"
+            onPress={() => onSelectKeys(Object.keys(confirmed), false)}
+            className="gap-1.5"
+          >
+            <ListX size={14} strokeWidth={2} aria-hidden />
+            Deselect All
+          </Button>
+          <span className="whitespace-nowrap text-[11px] text-muted">
+            {selectedCount} selected
+          </span>
+        </div>
       </div>
+
+      {sorted.length === 0 ? (
+        <p className="py-8 text-center text-muted">No rows match the current filters.</p>
+      ) : (
+        <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
+          <table className="w-full border-collapse text-xs">
+            <thead>
+              <tr className="border-b border-border">
+                <th className="sticky top-0 z-10 w-10 bg-surface px-2.5 py-1.5 text-center" title="Include on PDF report">
+                  <TableCheckbox
+                    isSelected={allVisibleSelected}
+                    aria-label="Select all visible extended panel rows"
+                    onChange={(checked) => onSelectKeys(visibleKeys, checked)}
+                  />
+                </th>
+                <SortableTh label="Gene" sortKey="gene" {...thProps} />
+                <SortableTh label="rsID" sortKey="rsid" {...thProps} />
+                <SortableTh label="Variant" sortKey="variant_name" {...thProps} />
+                <SortableTh label="Genotype" sortKey="genotype" {...thProps} />
+                <SortableTh label="Zygosity" sortKey="zygosity" {...thProps} />
+                <SortableTh label="Significance" sortKey="clinical_significance" {...thProps} />
+                <SortableTh label="Affected Drug(s)" sortKey="drugs" {...thProps} />
+                <SortableTh label="Evidence" sortKey="evidence_level" {...thProps} />
+                <SortableTh label="Status" sortKey="is_variant" {...thProps} />
+              </tr>
+            </thead>
+            <tbody>
+              {sorted.map((row, idx) => {
+                const key = `${row.gene}|${row.rsid ?? ''}`;
+                const isVar = row.is_variant || (!!row.zygosity && row.zygosity !== 'homozygous_ref');
+                const zyg = (row.zygosity || '').replace(/_/g, ' ');
+                const selected = !!confirmed[key];
+                const rowClass = selected
+                  ? 'bg-accent/10'
+                  : isVar
+                    ? 'bg-amber-700/[.04]'
+                    : 'hover:bg-accent/5';
+                return (
+                  <tr key={`${key}-${idx}`} className={`border-b border-border ${rowClass}`}>
+                    <td className="px-2.5 py-1 text-center">
+                      <TableCheckbox
+                        isSelected={selected}
+                        aria-label={`Include ${row.gene || 'row'}`}
+                        onChange={(checked) => onToggle(key, checked)}
+                      />
+                    </td>
+                    <td className="whitespace-nowrap px-2.5 py-1"><strong>{row.gene || '—'}</strong></td>
+                    <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">{row.rsid || '—'}</td>
+                    <td className="max-w-[160px] truncate px-2.5 py-1 text-muted" title={row.variant_name || ''}>
+                      {row.variant_name || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-2.5 py-1 font-mono"><code>{row.genotype || '—'}</code></td>
+                    <td className="whitespace-nowrap px-2.5 py-1">
+                      {zyg
+                        ? <span className="text-[11px] font-semibold">{zyg}</span>
+                        : <span className="text-muted">—</span>}
+                    </td>
+                    <td className="max-w-[160px] truncate px-2.5 py-1" title={row.clinical_significance || ''}>
+                      {row.clinical_significance || '—'}
+                    </td>
+                    <td className="max-w-[180px] truncate px-2.5 py-1 text-muted" title={row.drugs || ''}>
+                      {row.drugs || '—'}
+                    </td>
+                    <td className="whitespace-nowrap px-2.5 py-1 text-[11px]">{row.evidence_level || '—'}</td>
+                    <td className="whitespace-nowrap px-2.5 py-1">
+                      {isVar ? (
+                        <Chip color="warning" size="sm" variant="soft">
+                          <Chip.Label>Variant</Chip.Label>
+                        </Chip>
+                      ) : (
+                        <Chip size="sm" variant="soft">
+                          <Chip.Label>Ref</Chip.Label>
+                        </Chip>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+      )}
     </div>
   );
 }
