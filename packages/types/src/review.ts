@@ -87,9 +87,17 @@ export interface DarkGeneSection {
   };
 }
 
+export interface DarkGeneSectionReview {
+  approved?: boolean;
+  notes?: string;
+  risk?: 'low' | 'high' | string;
+  reviewer_set?: boolean;
+}
+
 /** DarkGenes as returned by the actual pipeline API */
 export interface DarkGenes {
   status?: string;
+  message?: string;
   sample_name?: string;
   summary_file?: string;
   detailed_file?: string;
@@ -99,9 +107,12 @@ export interface DarkGenes {
   detailed_text?: string;
   /** Array of gene-level sections parsed from the detailed output */
   detailed_sections?: DarkGeneDetailedSection[];
+  /** Index-aligned reviewer approvals for detailed_sections */
+  section_reviews?: DarkGeneSectionReview[];
   visual_evidence?: {
     igv_report_html?: string;
-    repeat_svgs?: Record<string, string>;
+    repeat_svgs?: string[] | Record<string, string>;
+    snapshots_png?: string[];
   };
   cftr_ivs9_eh?: unknown;
   /** Legacy sub-objects for backwards compatibility */
@@ -115,6 +126,8 @@ export interface DarkGenes {
 export interface DarkGeneDetailedSection {
   gene?: string;
   title?: string;
+  /** Pipeline severity — Portal uses `kind` (`alert` / `warning` / `normal`) */
+  kind?: 'alert' | 'warning' | 'warn' | 'normal' | string;
   level?: 'warn' | 'alert' | 'info' | string;
   body?: string;
   kv?: Array<{ key: string; value: string }>;
@@ -138,6 +151,15 @@ export interface PgxGeneResult {
   allele2_function?: string;
   call_source?: string;
   category?: string;
+  /** Extended panel fields */
+  rsid?: string;
+  variant_name?: string;
+  genotype?: string;
+  zygosity?: string;
+  clinical_significance?: string;
+  drugs?: string;
+  evidence_level?: string;
+  is_variant?: boolean;
   [key: string]: unknown;
 }
 
@@ -150,16 +172,57 @@ export interface PgxDrugRecommendation {
   [key: string]: unknown;
 }
 
+export interface PgxApoePhasing {
+  show_alert?: boolean;
+  short_warning?: string;
+  detail?: string;
+  status?: string;
+}
+
+export interface PgxApoeDiplotypeForReport {
+  report_key?: string;
+  source?: string;
+  [key: string]: unknown;
+}
+
+export interface PgxPortalReview {
+  reviewer_notes?: string;
+  reviewed?: boolean;
+  include_apoe_proactive_pdf?: boolean | string;
+  gene_reviews?: Array<{ gene: string; reviewer_confirmed: boolean; reviewer_comment?: string }>;
+  custom_gene_reviews?: Array<{ gene: string; rsid: string; reviewer_confirmed: boolean; reviewer_comment?: string }>;
+  [key: string]: unknown;
+}
+
+export interface PgxMeta {
+  tool_version?: string;
+  genome_build?: string;
+  exit_status?: string | number;
+  [key: string]: unknown;
+}
+
+export interface PgxArtifacts {
+  pgx_summary_txt?: string;
+  reporter_html_basename?: string;
+  pgx_meta_json?: string;
+  pgx_result_json?: string;
+  [key: string]: unknown;
+}
+
 export interface PgxResult {
   status?: string;
+  message?: string;
   summary_text?: string;
   gene_results?: PgxGeneResult[];
   custom_gene_results?: PgxGeneResult[];
   all_pharmcat_genes?: PgxGeneResult[];
   drug_recommendations?: PgxDrugRecommendation[];
-  apoe_diplotype_for_report?: string;
-  apoe_phasing?: unknown;
-  portal_review?: unknown;
+  apoe_diplotype_for_report?: PgxApoeDiplotypeForReport | string;
+  apoe_phasing?: PgxApoePhasing;
+  portal_review?: PgxPortalReview;
+  meta?: PgxMeta;
+  artifacts?: PgxArtifacts;
+  pgx_dir?: string;
   summary?: string;
   [key: string]: unknown;
 }
@@ -172,13 +235,21 @@ export interface BamTrack {
 }
 
 export interface CoverageContext {
+  /** Absolute path when API resolved a local file (optional; prefer bam_rel_path). */
   bam_path?: string;
   bam_index_path?: string;
   genome?: string;
   target_genes?: string[];
-  /** Raw daemon response fields */
+  interpretation_genes?: string[];
+  /** Daemon bam_tracks (relative to analysis roots). */
   bam_tracks?: BamTrack[];
   genome_id?: string;
+  /** Selected primary track for IGV (Portal prioritizeCoverageBamTracks). */
+  bam_rel_path?: string;
+  bam_index_rel_path?: string;
+  bam_label?: string;
+  igv_bam_message?: string;
+  prior_reuse_order_id?: string;
 }
 
 export interface ReviewData {

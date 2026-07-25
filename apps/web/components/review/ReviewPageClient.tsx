@@ -1,9 +1,11 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { Accordion, Card, Disclosure, Tabs } from '@heroui/react';
+import { catalogApi } from '../../lib/api/catalog';
 import { reviewApi } from '../../lib/api/review';
 import { formatPortalDateTime } from '../../lib/datetime';
+import { getVisibleReviewTabs, type ReviewTabId } from '../../lib/review-tabs';
 import { useReviewStore } from '../../lib/store/reviewStore';
 import { PageHeader } from '../ui/PageHeader';
 import { VariantTable } from './VariantTable/VariantTable';
@@ -12,11 +14,10 @@ import { PgxReview } from './PgxReview/PgxReview';
 import { CoverageViewer } from './CoverageViewer/CoverageViewer';
 import { ReportBuilder } from './ReportBuilder/ReportBuilder';
 import { GeneDatabase } from './GeneDatabase/GeneDatabase';
+import { ArtifactHtmlModal } from './ArtifactHtmlModal';
 import type { QcSummary, VariantStats } from '@gx-portal/types';
 
-type ReviewTab = 'variants' | 'darkgenes' | 'pgx' | 'report' | 'genedb' | 'coverage';
-
-const TABS: { id: ReviewTab; label: string }[] = [
+const ALL_TABS: { id: ReviewTabId; label: string }[] = [
   { id: 'variants',  label: 'Variants'      },
   { id: 'darkgenes', label: 'Dark genes'    },
   { id: 'pgx',       label: 'PGx'           },
@@ -166,8 +167,10 @@ function CarrierBanner({ stats, serviceCode }: { stats: VariantStats; serviceCod
 export function ReviewPageClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
-  const [tab, setTab]         = useState<ReviewTab>('variants');
-  const { setReviewData, reviewData, reset } = useReviewStore();
+  const [tab, setTab]         = useState<ReviewTabId>('variants');
+  const [panelsById, setPanelsById] = useState<Record<string, { category?: string }>>({});
+  const [apoeIgvPath, setApoeIgvPath] = useState<string | null>(null);
+  const { setReviewData, reviewData, reset, patchReviewData } = useReviewStore();
 
   useEffect(() => {
     reset();
@@ -176,6 +179,47 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
       .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load review data'))
       .finally(() => setLoading(false));
   }, [orderId, reset, setReviewData]);
+
+  useEffect(() => {
+    catalogApi.getPanels()
+      .then((r) => {
+        const map: Record<string, { category?: string }> = {};
+        for (const p of r.panels ?? []) {
+          if (p?.id) map[p.id] = { category: p.category };
+        }
+        setPanelsById(map);
+      })
+      .catch(() => {});
+  }, []);
+
+  const visibleTabs = useMemo(() => {
+    const ids = new Set(getVisibleReviewTabs(reviewData, panelsById));
+    return ALL_TABS.filter((t) => ids.has(t.id));
+  }, [reviewData, panelsById]);
+
+  // If the active tab is hidden for this kind, jump to the first visible one.
+  useEffect(() => {
+    if (!visibleTabs.length) return;
+    if (!visibleTabs.some((t) => t.id === tab)) {
+      setTab(visibleTabs[0].id);
+    }
+  }, [visibleTabs, tab]);
+
+  // Soft-refresh PGx when focusing the PGx tab (parity with Portal).
+  useEffect(() => {
+    if (tab !== 'pgx' || loading) return;
+    let cancelled = false;
+    reviewApi
+      .getResult(orderId)
+      .then((data) => {
+        if (cancelled || !data?.pgx) return;
+        patchReviewData({ pgx: data.pgx });
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [tab, orderId, loading, patchReviewData]);
 
   if (loading) return <p className="py-12 text-center text-muted">Loading review data…</p>;
   if (error)   return <p className="py-12 text-center text-danger">{error}</p>;
@@ -210,12 +254,12 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
 
       <Tabs
         selectedKey={tab}
-        onSelectionChange={(key) => setTab(key as ReviewTab)}
+        onSelectionChange={(key) => setTab(key as ReviewTabId)}
         className="mb-4"
       >
         <Tabs.ListContainer>
           <Tabs.List aria-label="Review sections">
-            {TABS.map((t) => (
+            {visibleTabs.map((t) => (
               <Tabs.Tab key={t.id} id={t.id} className="relative">
                 {t.label}
                 {/* Must live inside each Tab — sibling of Tab breaks SharedElementTransition */}
@@ -225,17 +269,36 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
           </Tabs.List>
         </Tabs.ListContainer>
 
-        {TABS.map((t) => (
+        {visibleTabs.map((t) => (
           <Tabs.Panel key={t.id} id={t.id} className="min-h-[400px] pt-4">
             {t.id === 'variants'  && <VariantTable  orderId={orderId} />}
-            {t.id === 'darkgenes' && <DarkGenesPanel />}
-            {t.id === 'pgx'       && <PgxReview orderId={orderId} />}
+            {t.id === 'darkgenes' && (
+              <DarkGenesPanel
+                orderId={orderId}
+                onJumpCoverage={() => setTab('coverage')}
+              />
+            )}
+            {t.id === 'pgx' && (
+              <PgxReview
+                orderId={orderId}
+                onOpenApoeIgv={(rel) => setApoeIgvPath(rel)}
+              />
+            )}
             {t.id === 'report'    && <ReportBuilder orderId={orderId} />}
             {t.id === 'genedb'    && <GeneDatabase />}
             {t.id === 'coverage'  && <CoverageViewer orderId={orderId} />}
           </Tabs.Panel>
         ))}
       </Tabs>
+
+      <ArtifactHtmlModal
+        open={!!apoeIgvPath}
+        orderId={orderId}
+        relPath={apoeIgvPath}
+        title="APOE cis/trans IGV"
+        help="IGV phasing view for APOE tag SNPs."
+        onClose={() => setApoeIgvPath(null)}
+      />
     </div>
   );
 }

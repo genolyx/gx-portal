@@ -11,102 +11,256 @@ import type { IgvBrowserHandle } from './IgvBrowser';
 
 const IgvBrowser = dynamic(() => import('./IgvBrowser'), {
   ssr: false,
-  loading: () => <div className="py-10 text-center text-sm text-muted">Loading IGV browser…</div>,
+  loading: () => (
+    <div className="flex min-h-[180px] items-center justify-center border-t border-border px-5 py-10 text-[13px] text-muted">
+      Loading IGV…
+    </div>
+  ),
 });
 
-const CFTR_IVS9: Record<string, string> = {
-  hg38:  'chr7:117,548,607-117,548,835',
-  hg19:  'chr7:117,227,832-117,228,060',
-  GRCh38:'chr7:117,548,607-117,548,835',
-  GRCh37:'chr7:117,227,832-117,228,060',
+/** Portal CFTR IVS9 pileup window (tighter than the EH BED span). */
+const CFTR_IVS9_PILEUP: Record<string, string> = {
+  hg38: 'chr7:117548560-117548680',
+  GRCh38: 'chr7:117548560-117548680',
+  hg19: 'chr7:117227785-117227905',
+  GRCh37: 'chr7:117227785-117227905',
 };
 
-function variantKey(v: { gene?: string; hgvsc?: string; hgvsp?: string; chrom?: string; pos?: number }) {
-  return [v.gene, v.hgvsc ?? v.hgvsp ?? (v.chrom && v.pos ? `${v.chrom}:${v.pos}` : '')].filter(Boolean).join(' ');
+function variantKey(v: {
+  gene?: string;
+  hgvsc?: string;
+  hgvsp?: string;
+  chrom?: string;
+  pos?: number;
+  variant_id?: string;
+  id?: string;
+}) {
+  return [v.gene, v.hgvsc ?? v.hgvsp ?? (v.chrom && v.pos ? `${v.chrom}:${v.pos}` : '')]
+    .filter(Boolean)
+    .join(' ');
 }
 
-function variantLocus(v: { chrom?: string; pos?: number }, windowBp = 300): string {
-  if (!v.chrom || !v.pos) return '';
-  const half = Math.floor(windowBp / 2);
-  return `${v.chrom}:${Math.max(1, v.pos - half)}-${v.pos + half}`;
+function formatVariantBaseChange(v: { ref?: string; alt?: string }): string {
+  const ref = String(v.ref || '').trim();
+  const alt = String(v.alt || '').trim();
+  if (ref && alt) return `${ref}→${alt}`;
+  return '';
+}
+
+/**
+ * Portal `variantToCoverageLocus`: carrier/exome pad=45 (±45bp), sgNIPT pad=2.
+ * This is what makes Portal look more zoomed-in than a gene-level locus.
+ */
+function variantToCoverageLocus(
+  v: { chrom?: string; pos?: number },
+  pad = 45,
+): string {
+  const c = String(v.chrom || '').trim();
+  const p = parseInt(String(v.pos ?? ''), 10);
+  if (!c || Number.isNaN(p)) return '';
+  const a = Math.max(1, p - pad);
+  const b = p + pad;
+  return `${c}:${a}-${b}`;
 }
 
 export function CoverageViewer({ orderId }: { orderId: string }) {
-  const reviewData       = useReviewStore((s) => s.reviewData);
+  const reviewData = useReviewStore((s) => s.reviewData);
   const selectedVariants = useReviewStore((s) => s.selectedVariants);
+  const coverageNav = useReviewStore((s) => s.coverageNav);
+  const clearCoverageNav = useReviewStore((s) => s.clearCoverageNav);
 
-  const [context,     setContext]     = useState<CoverageContext | null>(null);
-  const [loadingCtx,  setLoadingCtx]  = useState(true);
-  const [ctxError,    setCtxError]    = useState('');
-  const [igvReady,    setIgvReady]    = useState(false);
+  const [context, setContext] = useState<CoverageContext | null>(null);
+  const [loadingCtx, setLoadingCtx] = useState(true);
+  const [ctxError, setCtxError] = useState('');
+  const [igvReady, setIgvReady] = useState(false);
+  /** Portal: IGV starts only after Load / refresh — do not auto-mount. */
+  const [igvLoaded, setIgvLoaded] = useState(false);
+  const [igvKey, setIgvKey] = useState(0);
+  const [initialLocus, setInitialLocus] = useState('');
 
-  const [geneInput,    setGeneInput]    = useState('');
-  const [locusInput,   setLocusInput]   = useState('');
+  const [geneInput, setGeneInput] = useState('');
+  const [locusInput, setLocusInput] = useState('');
   const [variantFilter, setVariantFilter] = useState<'all' | 'checked'>('all');
   const [selectedVarIdx, setSelectedVarIdx] = useState<number>(-1);
-  const [cftrInfo,    setCftrInfo]     = useState(false);
+  const [cftrInfo, setCftrInfo] = useState(false);
+  const [variantHint, setVariantHint] = useState('');
 
   const igvRef = useRef<IgvBrowserHandle>(null);
-  const [igvLoaded,   setIgvLoaded]   = useState(false);
 
   useEffect(() => {
-    reviewApi.getCoverageContext(orderId)
+    setLoadingCtx(true);
+    setCtxError('');
+    setIgvReady(false);
+    setIgvLoaded(false);
+    setSelectedVarIdx(-1);
+    setVariantHint('');
+    reviewApi
+      .getCoverageContext(orderId)
       .then(setContext)
-      .catch((e) => setCtxError(e instanceof Error ? e.message : 'Failed to load coverage context'))
+      .catch((e) =>
+        setCtxError(e instanceof Error ? e.message : 'Failed to load coverage context'),
+      )
       .finally(() => setLoadingCtx(false));
   }, [orderId]);
 
   const allVariants = reviewData?.variants ?? [];
-  const filteredVariants = variantFilter === 'checked'
-    ? allVariants.filter((v) => {
-        const k = String(v.variant_id ?? v.id ?? variantKey(v));
-        return selectedVariants.has(k);
-      })
-    : allVariants;
+  const filteredVariants =
+    variantFilter === 'checked'
+      ? allVariants.filter((v) => {
+          const k = String(v.variant_id ?? v.id ?? variantKey(v));
+          return selectedVariants.has(k);
+        })
+      : allVariants;
 
   const selectedVar = filteredVariants[selectedVarIdx] ?? null;
+  const genes = context?.interpretation_genes ?? context?.target_genes ?? [];
 
-  useEffect(() => {
-    if (!igvReady || !selectedVar) return;
-    const locus = variantLocus(selectedVar);
-    if (locus) igvRef.current?.navigateTo(locus);
-    if (selectedVar.chrom && selectedVar.pos) {
-      const markerName = [selectedVar.gene, selectedVar.hgvsc ?? selectedVar.hgvsp].filter(Boolean).join(' ');
-      igvRef.current?.loadMarker(selectedVar.chrom, selectedVar.pos, markerName);
+  const defaultLocus = (): string => {
+    for (const v of allVariants) {
+      const z = variantToCoverageLocus(v);
+      if (z) return z;
+      const g = String(v.gene || '').trim();
+      if (g) return g;
     }
-  }, [selectedVarIdx, igvReady, selectedVar]);
+    return genes[0] || 'BRCA1';
+  };
+
+  const applyVariantJumpUi = (v: (typeof allVariants)[number]) => {
+    const locus = variantToCoverageLocus(v);
+    if (locus) setLocusInput(locus);
+    const ch = formatVariantBaseChange(v);
+    const pos =
+      v.chrom && v.pos != null && String(v.pos).trim() !== ''
+        ? `${v.chrom}:${v.pos}`
+        : '';
+    if (ch && pos) {
+      setVariantHint(
+        `${ch} at ${pos} — pileup shows all bases (use CFTR IVS9 button for tract review)`,
+      );
+    } else if (pos) {
+      setVariantHint(`Jumped to ${pos}`);
+    } else {
+      setVariantHint('');
+    }
+    return locus;
+  };
+
+  const startOrNavigate = async (locus: string, marker?: { chrom: string; pos: number }) => {
+    const loc = locus.trim();
+    if (!loc) return;
+
+    if (!igvLoaded) {
+      setInitialLocus(loc);
+      setIgvLoaded(true);
+      // Marker applied in onLoad via pending — store on ref through setTimeout after ready
+      if (marker) {
+        const apply = () => {
+          if (igvRef.current) {
+            igvRef.current.setPosMarker(marker.chrom, marker.pos);
+          } else {
+            setTimeout(apply, 100);
+          }
+        };
+        setTimeout(apply, 300);
+      }
+      return;
+    }
+
+    if (igvReady && igvRef.current) {
+      await igvRef.current.navigateTo(loc);
+      if (marker) igvRef.current.setPosMarker(marker.chrom, marker.pos);
+    }
+  };
+
+  // Dark genes → CFTR IGV jump: load if needed, then navigate
+  useEffect(() => {
+    if (!coverageNav) return;
+    const genome = context?.genome ?? context?.genome_id ?? 'hg38';
+    const locus =
+      coverageNav.label === 'CFTR IVS9'
+        ? (CFTR_IVS9_PILEUP[genome] ?? CFTR_IVS9_PILEUP.hg38)
+        : coverageNav.locus;
+    setCftrInfo(true);
+    setLocusInput(locus);
+    void startOrNavigate(locus);
+    clearCoverageNav();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [coverageNav, context?.genome, context?.genome_id]);
+
+  const handleSelectVariant = (idx: number) => {
+    setSelectedVarIdx(idx);
+    if (idx < 0) {
+      setVariantHint('');
+      igvRef.current?.clearPosMarker();
+      return;
+    }
+    const v = filteredVariants[idx];
+    if (!v) return;
+    const locus = applyVariantJumpUi(v);
+    const marker =
+      v.chrom && v.pos != null
+        ? { chrom: String(v.chrom), pos: Number(v.pos) }
+        : undefined;
+    void startOrNavigate(locus, marker);
+  };
+
+  const handleLoadRefresh = () => {
+    const loc = locusInput.trim() || defaultLocus();
+    setLocusInput(loc);
+    if (!igvLoaded) {
+      setInitialLocus(loc);
+      setIgvLoaded(true);
+      return;
+    }
+    // Hard refresh: remount browser (Portal disposes + recreate)
+    setIgvReady(false);
+    setInitialLocus(loc);
+    setIgvKey((k) => k + 1);
+  };
 
   const handleLookupGene = () => {
     const g = geneInput.trim();
-    if (!g || !igvReady) return;
-    igvRef.current?.navigateTo(g);
+    if (!g) return;
+    setLocusInput(g);
+    void startOrNavigate(g);
   };
 
   const handleGoLocus = () => {
     const l = locusInput.trim();
-    if (!l || !igvReady) return;
-    igvRef.current?.navigateTo(l);
+    if (!l) return;
+    void startOrNavigate(l);
   };
 
   const handleCftrIvs9 = () => {
-    const genome = context?.genome ?? 'hg38';
-    const locus  = CFTR_IVS9[genome] ?? CFTR_IVS9.hg38;
+    const genome = context?.genome ?? context?.genome_id ?? 'hg38';
+    const locus = CFTR_IVS9_PILEUP[genome] ?? CFTR_IVS9_PILEUP.hg38;
     setCftrInfo(true);
-    if (igvReady) igvRef.current?.navigateTo(locus);
-    else setLocusInput(locus);
+    setLocusInput(locus);
+    void startOrNavigate(locus);
   };
 
   const handleClearMarker = () => {
     setCftrInfo(false);
-    igvRef.current?.removeBedTrack('CFTR IVS9');
-    igvRef.current?.clearMarker();
+    setVariantHint('');
+    igvRef.current?.clearPosMarker();
   };
 
-  if (loadingCtx) return <p className="py-10 text-center text-sm text-muted">Loading coverage context…</p>;
-  if (ctxError)   return <p className="py-10 text-center text-danger">{ctxError}</p>;
+  if (loadingCtx) {
+    return <p className="py-10 text-center text-sm text-muted">Loading coverage context…</p>;
+  }
+  if (ctxError) {
+    return <p className="py-10 text-center text-danger">{ctxError}</p>;
+  }
 
-  const bamFile = context?.bam_tracks?.[context.bam_tracks.length - 1]?.label
-    ?? context?.bam_path?.split('/').pop();
+  const hasBam = !!(
+    context?.bam_rel_path ||
+    context?.bam_path ||
+    (context?.bam_tracks && context.bam_tracks.some((t) => t.has_index && t.rel_path))
+  );
+  const bamFile =
+    context?.bam_label ||
+    context?.bam_rel_path?.split('/').pop() ||
+    context?.bam_path?.split('/').pop();
 
   const variantOptions = [
     { id: '-1', label: '— select variant —' },
@@ -115,29 +269,32 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
 
   return (
     <div className="flex flex-col overflow-hidden rounded-md border border-border bg-surface">
-      {bamFile && (
-        <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3.5 py-2 text-xs">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">IGV BAM</span>
-          <code className="text-xs text-accent">{bamFile}</code>
-          <span className="text-[11px] text-muted">(auto)</span>
-          <Button
-            type="button"
-            size="sm"
-            variant="secondary"
-            className="ml-auto gap-1.5"
-            onPress={() => {
-              if (!igvLoaded) {
-                setIgvLoaded(true);
-              } else {
-                igvRef.current?.navigateTo(context?.target_genes?.[0] ?? 'chr1');
-              }
-            }}
-          >
-            <RefreshCw size={14} strokeWidth={2} aria-hidden />
-            Load / refresh IGV
-          </Button>
-        </div>
-      )}
+      <div className="flex flex-wrap items-center gap-2 border-b border-border bg-surface px-3.5 py-2 text-xs">
+        <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">IGV BAM</span>
+        {context?.igv_bam_message ? (
+          <span className="leading-snug text-muted">{context.igv_bam_message}</span>
+        ) : bamFile ? (
+          <>
+            <code className="text-xs text-accent">{bamFile}</code>
+            <span className="text-[11px] text-muted">(auto)</span>
+          </>
+        ) : (
+          <span className="text-muted">
+            No exome-style BAM found under this order’s analysis/output paths.
+          </span>
+        )}
+        <Button
+          type="button"
+          size="sm"
+          variant="secondary"
+          className="ml-auto gap-1.5"
+          isDisabled={!hasBam}
+          onPress={handleLoadRefresh}
+        >
+          <RefreshCw size={14} strokeWidth={2} aria-hidden />
+          Load / refresh IGV
+        </Button>
+      </div>
 
       <div className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2">
         <Input
@@ -153,7 +310,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
           type="button"
           size="sm"
           variant="primary"
-          isDisabled={!igvReady}
+          isDisabled={!hasBam}
           onPress={handleLookupGene}
           className="gap-1.5"
         >
@@ -164,29 +321,39 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
 
       {allVariants.length > 0 && (
         <div className="flex flex-wrap items-center gap-2 border-b border-border px-3.5 py-2">
-          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">Jump to variant</span>
+          <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">
+            Jump to variant
+          </span>
           <RadioGroup
             value={variantFilter}
-            onChange={(v) => { setVariantFilter(v as 'all' | 'checked'); setSelectedVarIdx(-1); }}
+            onChange={(v) => {
+              setVariantFilter(v as 'all' | 'checked');
+              setSelectedVarIdx(-1);
+              setVariantHint('');
+            }}
             orientation="horizontal"
             className="flex-row gap-3"
           >
             <Radio value="all">
               <Radio.Content className="text-xs">
-                <Radio.Control><Radio.Indicator /></Radio.Control>
+                <Radio.Control>
+                  <Radio.Indicator />
+                </Radio.Control>
                 All
               </Radio.Content>
             </Radio>
             <Radio value="checked">
               <Radio.Content className="text-xs">
-                <Radio.Control><Radio.Indicator /></Radio.Control>
+                <Radio.Control>
+                  <Radio.Indicator />
+                </Radio.Control>
                 Checked
               </Radio.Content>
             </Radio>
           </RadioGroup>
           <Select
             selectedKey={String(selectedVarIdx)}
-            onSelectionChange={(key) => setSelectedVarIdx(parseInt(String(key), 10))}
+            onSelectionChange={(key) => handleSelectVariant(parseInt(String(key), 10))}
             className="min-w-[260px]"
             aria-label="Select variant"
           >
@@ -204,13 +371,22 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
               </ListBox>
             </Select.Popover>
           </Select>
-          {selectedVar && (
-            <span className="max-w-[500px] truncate rounded border border-border bg-surface px-2 py-0.5 text-[11px] text-muted">
-              {selectedVar.ref && selectedVar.alt && (
-                <strong className="text-foreground">{selectedVar.ref}→{selectedVar.alt}</strong>
-              )}{' '}
-              at {selectedVar.chrom}:{selectedVar.pos}
-              {selectedVar.hgvsc && <> — pileup shows all bases</>}
+          {variantHint && (
+            <span className="max-w-[520px] text-[11px] leading-snug text-muted">
+              {selectedVar?.ref && selectedVar?.alt ? (
+                <>
+                  <strong className="text-foreground">
+                    {selectedVar.ref}→{selectedVar.alt}
+                  </strong>
+                  {' at '}
+                  <code className="text-[11px]">
+                    {selectedVar.chrom}:{selectedVar.pos}
+                  </code>
+                  {' — pileup shows all bases'}
+                </>
+              ) : (
+                variantHint
+              )}
             </span>
           )}
         </div>
@@ -231,7 +407,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
           type="button"
           size="sm"
           variant="secondary"
-          isDisabled={!igvReady || !locusInput.trim()}
+          isDisabled={!hasBam || !locusInput.trim()}
           onPress={handleGoLocus}
           className="gap-1.5"
         >
@@ -242,6 +418,7 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
           type="button"
           size="sm"
           variant="secondary"
+          isDisabled={!hasBam}
           onPress={handleCftrIvs9}
           className="gap-1.5"
         >
@@ -262,34 +439,46 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
 
       {cftrInfo && (
         <div className="border-b border-border bg-surface px-3.5 py-2.5 text-[11px] leading-relaxed text-muted">
-          <strong className="text-foreground">CFTR IVS9:</strong> Click the button above (or open from a CFTR tract variant) to load a small BED track
-          on <code className="text-[10px]">chr7:117,548,607-835</code> (FH-style span) with separate features for the TG and poly-T stretches
-          (C(8)chr38, ref layout (T0)<sub>9</sub>(T1)y). The alignment track is set to show all bases (not only mismatches).
-          Use the track&apos;s gear menu for &quot;full&quot; vs &quot;expanded&quot; if the pileup is dense.
-          Homopolymer tracts may still appear as gaps/deletions in CIGAR — counts are best from Expansion Hunter
-          REPCN when available.
+          <strong className="text-foreground">CFTR IVS9:</strong> Jump to the Expansion Hunter
+          poly-TG / poly-T pileup window. Alignment track shows all bases.
         </div>
       )}
 
-      {context?.bam_path ? (
+      {hasBam && context ? (
         igvLoaded ? (
           <IgvBrowser
+            key={igvKey}
             ref={igvRef}
             context={context}
             orderId={orderId}
-            onLoad={() => setIgvReady(true)}
+            initialLocus={initialLocus || defaultLocus()}
+            onLoad={() => {
+              setIgvReady(true);
+              // Re-apply marker if a variant is selected
+              if (selectedVar?.chrom && selectedVar.pos != null) {
+                igvRef.current?.setPosMarker(String(selectedVar.chrom), Number(selectedVar.pos));
+              }
+            }}
           />
         ) : (
           <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 border-t border-border bg-surface px-5 py-10 text-[13px] text-muted">
-            <p>Click <strong className="text-foreground">Load / refresh IGV</strong> above to start streaming the BAM file.</p>
-            <p className="text-[11px]">BAM: <code>{bamFile}</code></p>
+            <p>
+              Click <strong className="text-foreground">Load / refresh IGV</strong> to open
+              alignments for this order’s BAM, then lookup a gene or pick a variant.
+            </p>
+            {bamFile && (
+              <p className="text-[11px]">
+                BAM: <code>{bamFile}</code>
+              </p>
+            )}
           </div>
         )
       ) : (
         <div className="py-10 text-center text-[13px] text-muted">
           <p>No BAM file available for this order.</p>
           <p className="mt-1.5 text-[0.8em]">
-            IGV requires a BAM + BAI index. Check that the pipeline completed successfully.
+            IGV requires a BAM + BAI index under analysis/output (or prior-reuse paths).
+            Paraphase/SMN/FMR1 BAMs are not used for auto-IGV.
           </p>
         </div>
       )}

@@ -422,3 +422,204 @@ button { cursor: pointer; font-family: inherit; }
 @media (prefers-reduced-motion: reduce) {
   .spinner { animation: none; }
 }
+
+/* ── Dark genes Review (parity with service-daemon Portal) ── */
+.dark-genes-panel { padding: 0; }
+.dark-genes-table-wrap {
+  overflow-x: auto; margin: 0 0 12px;
+  border-radius: 12px; border: 1px solid var(--border); background: var(--surface);
+}
+.dark-genes-matrix { width: 100%; border-collapse: collapse; font-size: 11px; line-height: 1.4; }
+.dark-genes-matrix th, .dark-genes-matrix td {
+  border: 1px solid var(--border); padding: 8px 10px; vertical-align: top; text-align: left;
+  max-width: min(420px, 32vw); word-break: break-word;
+}
+.dark-genes-matrix thead th {
+  position: sticky; top: 0; z-index: 1; background: var(--surface);
+  font-size: 10px; font-weight: 600; color: var(--muted); white-space: nowrap;
+}
+.dark-genes-matrix tbody tr:nth-child(odd) { background: color-mix(in oklch, var(--surface) 92%, var(--foreground)); }
+.dark-genes-matrix .dark-genes-warn { color: #d97706; }
+.dark-genes-matrix .dark-genes-err { color: #dc2626; font-weight: 600; }
+.dark-genes-raw-details { margin: 10px 0 0; font-size: 12px; }
+.dark-genes-raw-details summary { cursor: pointer; color: var(--accent); user-select: none; padding: 4px 0; }
+.dark-genes-raw-details pre {
+  margin: 8px 0 0; font-size: 11px; line-height: 1.45; white-space: pre-wrap; max-height: 40vh; overflow: auto;
+  padding: 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface);
+}
+.dark-genes-stack {
+  display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px 12px; align-items: start;
+  max-height: min(78vh, 980px); overflow: auto; padding: 0;
+}
+.dark-genes-stack-spacer { min-width: 0; pointer-events: none; }
+.dark-genes-stack > .dark-genes-sec:only-child { grid-column: 1 / -1; }
+@media (max-width: 900px) {
+  .dark-genes-stack { grid-template-columns: 1fr; }
+  .dark-genes-stack-spacer { display: none; }
+}
+.dg-report-details {
+  border: 1px solid var(--border); border-radius: 12px; background: var(--surface);
+  margin-top: 12px; overflow: hidden;
+}
+.dg-report-summary {
+  cursor: pointer; list-style: none; font-size: 13px; font-weight: 600; padding: 10px 12px; margin: 0;
+  display: flex; align-items: center; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+  color: var(--foreground); border-bottom: 1px solid var(--border);
+}
+.dg-report-summary::-webkit-details-marker { display: none; }
+.dg-report-summary::marker { content: ''; }
+.dg-report-details-body { padding: 10px 12px 12px; }
+.dark-genes-sec {
+  border: 1px solid var(--border); border-radius: 10px; padding: 8px 10px;
+  background: var(--surface); min-width: 0;
+}
+.dark-genes-sec--warn { border-color: #f59e0b; background: rgba(217, 119, 6, 0.12); }
+.dark-genes-sec--alert { border-width: 2px; border-color: #f59e0b; background: rgba(180, 83, 9, 0.16); }
+.dark-genes-sec--warn .dark-genes-sec-title { color: #b45309; }
+.dark-genes-sec--alert .dark-genes-sec-title { color: #9a3412; }
+.dark .dark-genes-sec--warn .dark-genes-sec-title,
+[data-theme="dark"] .dark-genes-sec--warn .dark-genes-sec-title { color: #fde68a; }
+.dark .dark-genes-sec--alert .dark-genes-sec-title,
+[data-theme="dark"] .dark-genes-sec--alert .dark-genes-sec-title { color: #fcd34d; }
+.dark-genes-sec-title-wrap {
+  margin: 0 0 6px; padding: 3px 0 3px 10px; border-left: 6px solid #be123c;
+  background: #fff1f2; border-radius: 0 8px 8px 0;
+}
+.dark-genes-sec-title-wrap--low { border-left-color: #15803d; background: #f0fdf4; }
+.dark-genes-sec-title-wrap--high { border-left-color: #be123c; background: #fff1f2; }
+.dark .dark-genes-sec-title-wrap--high,
+[data-theme="dark"] .dark-genes-sec-title-wrap--high {
+  background: rgba(190, 18, 60, 0.14); border-left-color: #fb7185;
+}
+.dark .dark-genes-sec-title-wrap--low,
+[data-theme="dark"] .dark-genes-sec-title-wrap--low {
+  background: rgba(21, 128, 61, 0.18); border-left-color: #4ade80;
+}
+.dark-genes-sec-title-wrap .dark-genes-sec-title { margin: 0; }
+.dark-genes-sec-title-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 10px; flex-wrap: wrap;
+}
+.dark-genes-sec-title-row .dark-genes-sec-title { flex: 1; min-width: 0; }
+.dark-genes-sec-title-row .dg-sec-visual {
+  flex-shrink: 0; font-size: 11px; padding: 5px 12px; border-radius: 8px; white-space: nowrap;
+  border: 1px solid var(--border); background: var(--surface); color: var(--accent);
+  cursor: pointer; font-weight: 600;
+}
+.dark-genes-sec-title-row .dg-sec-visual:hover { filter: brightness(1.08); }
+.dark-genes-sec-title { font-weight: 700; font-size: 12px; margin: 0 0 8px; color: var(--foreground); }
+.dark-genes-sec-body {
+  white-space: pre-wrap; font-size: 11px; line-height: 1.45; margin: 0;
+  font-family: ui-monospace, Consolas, monospace; overflow-x: auto; color: var(--foreground);
+}
+.dark-genes-sec-body--kv {
+  font-family: ui-sans-serif, system-ui, -apple-system, sans-serif; padding: 2px 0 0;
+}
+.dark-genes-kv {
+  display: grid; grid-template-columns: minmax(8rem, auto) 1fr; gap: 8px 18px;
+  margin: 0; font-size: 12px; line-height: 1.5; align-items: baseline;
+}
+.dark-genes-kv dt { margin: 0; color: var(--muted); font-weight: 600; }
+.dark-genes-kv dd { margin: 0; color: var(--foreground); font-variant-numeric: tabular-nums; }
+.dark-genes-sec-actions { margin-top: 8px; padding-top: 8px; border-top: 1px solid var(--border); }
+.dg-actions-toolbar { display: flex; flex-direction: column; align-items: stretch; gap: 8px; }
+.dg-risk-approve-group {
+  display: inline-flex; align-items: center; gap: 8px; flex-shrink: 0; flex-wrap: nowrap;
+  align-self: flex-start;
+}
+.dark-genes-sec-actions .dg-approve-btn,
+.dark-genes-sec-actions .btn.dg-approve-btn {
+  flex-shrink: 0; font-size: 12px; padding: 5px 12px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--surface); color: var(--foreground); cursor: pointer;
+}
+.dark-genes-sec-actions .dg-approve-btn.dg-approved {
+  background: rgba(34, 197, 94, 0.18); border-color: #22c55e; color: #15803d;
+}
+.dark .dark-genes-sec-actions .dg-approve-btn.dg-approved,
+[data-theme="dark"] .dark-genes-sec-actions .dg-approve-btn.dg-approved {
+  color: #86efac;
+}
+.dark-genes-sec-actions .dg-sec-risk {
+  width: auto; min-width: 4.5rem; max-width: 9rem; flex-shrink: 0;
+  font-size: 12px; padding: 4px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--field-background, var(--surface));
+  color: var(--foreground);
+}
+.dg-notes-wrap { flex: 1; min-width: 0; width: 100%; display: flex; flex-direction: column; gap: 3px; }
+.dg-notes-wrap .dg-notes-label { font-size: 11px; color: var(--muted); font-weight: 600; }
+.dark-genes-sec-actions .dg-sec-notes {
+  width: 100%; min-height: 8.5rem; max-height: min(50vh, 22rem); padding: 6px 8px; border-radius: 8px;
+  border: 1px solid var(--border); background: var(--field-background, var(--surface));
+  color: var(--foreground); font-size: 12px; font-family: inherit; resize: vertical; line-height: 1.4;
+}
+.dark-genes-save-row {
+  margin-top: 10px; display: flex; align-items: flex-start; gap: 10px; flex-wrap: wrap;
+}
+.dark-genes-cftr-eh-banner { margin: 0 0 12px; }
+.dg-smn-igv-frame { color-scheme: light; }
+
+/* ── Coverage IGV host (parity with Portal #coverageIgvHost) ── */
+.coverage-igv-host,
+#coverageIgvHost {
+  background: #f4f6fb;
+  border-radius: 0;
+  border-top: 1px solid var(--border);
+  min-height: 640px;
+  height: clamp(560px, 75vh, 1100px);
+  position: relative;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  color-scheme: light;
+}
+.coverage-igv-host > .igv-container,
+#coverageIgvHost > .igv-container {
+  flex: 1 1 auto;
+  width: 100%;
+  min-height: 0;
+  height: 100%;
+  align-self: stretch;
+  align-items: stretch;
+}
+.coverage-igv-host .igv-column-container,
+#coverageIgvHost .igv-column-container {
+  flex: 1 1 auto;
+  min-height: 0;
+  align-self: stretch;
+}
+.dark .coverage-igv-host,
+.dark #coverageIgvHost,
+[data-theme="dark"] .coverage-igv-host,
+[data-theme="dark"] #coverageIgvHost {
+  background: #f4f6fb; /* IGV expects a light viewport */
+}
+
+/* Portal: dual red vertical lines around the variant base */
+.igv-pos-marker-line {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: #EF4444;
+  pointer-events: none;
+  z-index: 9999;
+}
+.igv-pos-marker-label {
+  position: absolute;
+  top: 0;
+  background: #EF4444;
+  color: #fff;
+  font-size: 11px;
+  font-weight: 700;
+  padding: 2px 6px;
+  border-radius: 0 0 4px 4px;
+  pointer-events: none;
+  z-index: 10000;
+  white-space: nowrap;
+  transform: translateX(-50%);
+}
+[class*="igv-popover"] *,
+.igv-popover *,
+.igv-ui-popover * { color: #111 !important; }
+.igv-popover td,
+.igv-ui-popover td { color: #111 !important; font-size: 12px !important; }

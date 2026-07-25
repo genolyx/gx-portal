@@ -6,16 +6,27 @@ export interface VariantComment {
   comment?: string;
 }
 
+export type CoverageNavRequest = {
+  /** e.g. CFTR IVS9 locus */
+  locus: string;
+  label?: string;
+};
+
 interface ReviewStore {
   reviewData: ReviewData | null;
   selectedVariants: Set<string>;
   variantComments: Record<string, VariantComment>;
+  /** One-shot request from Dark genes → Coverage tab */
+  coverageNav: CoverageNavRequest | null;
 
   setReviewData: (data: ReviewData) => void;
+  patchReviewData: (patch: Partial<ReviewData>) => void;
   toggleVariant: (id: string) => void;
   selectAll: (ids: string[]) => void;
   clearSelection: () => void;
   setVariantComment: (id: string, comment: Partial<VariantComment>) => void;
+  requestCoverageNav: (nav: CoverageNavRequest) => void;
+  clearCoverageNav: () => void;
   reset: () => void;
 }
 
@@ -23,8 +34,11 @@ export const useReviewStore = create<ReviewStore>((set) => ({
   reviewData: null,
   selectedVariants: new Set(),
   variantComments: {},
+  coverageNav: null,
 
   setReviewData: (data) => set({ reviewData: data }),
+  patchReviewData: (patch) =>
+    set((s) => (s.reviewData ? { reviewData: { ...s.reviewData, ...patch } } : {})),
 
   toggleVariant: (id) =>
     set((s) => {
@@ -44,5 +58,14 @@ export const useReviewStore = create<ReviewStore>((set) => ({
       },
     })),
 
-  reset: () => set({ reviewData: null, selectedVariants: new Set(), variantComments: {} }),
+  requestCoverageNav: (nav) => set({ coverageNav: nav }),
+  clearCoverageNav: () => set({ coverageNav: null }),
+
+  reset: () =>
+    set({
+      reviewData: null,
+      selectedVariants: new Set(),
+      variantComments: {},
+      coverageNav: null,
+    }),
 }));

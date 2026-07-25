@@ -102,4 +102,44 @@ export class DaemonService {
   delete<T>(path: string): Promise<T> {
     return this.request<T>('DELETE', path);
   }
+
+  /** Fetch a binary/text artifact from the daemon (does not force JSON parse). */
+  async fetchRaw(path: string): Promise<{ body: Buffer; contentType: string; status: number }> {
+    const url = `${this._baseUrl}${path}`;
+    const headers: Record<string, string> = {};
+    if (this._apiKey) headers['X-API-Key'] = this._apiKey;
+
+    let res: Response;
+    try {
+      res = await fetch(url, { method: 'GET', headers });
+    } catch (err) {
+      this.logger.error(`Daemon unreachable: ${(err as Error).message}`);
+      throw new HttpException('gx-daemon unreachable', HttpStatus.BAD_GATEWAY);
+    }
+
+    const contentType = res.headers.get('content-type') ?? 'application/octet-stream';
+    const ab = await res.arrayBuffer();
+    return { body: Buffer.from(ab), contentType, status: res.status };
+  }
+
+  /**
+   * Stream a daemon response (supports Range / HEAD for IGV BAM).
+   * Caller is responsible for piping `response.body` to the client.
+   */
+  async fetchStream(
+    path: string,
+    opts?: { method?: 'GET' | 'HEAD'; range?: string },
+  ): Promise<Response> {
+    const url = `${this._baseUrl}${path}`;
+    const headers: Record<string, string> = {};
+    if (this._apiKey) headers['X-API-Key'] = this._apiKey;
+    if (opts?.range) headers['Range'] = opts.range;
+
+    try {
+      return await fetch(url, { method: opts?.method ?? 'GET', headers });
+    } catch (err) {
+      this.logger.error(`Daemon unreachable: ${(err as Error).message}`);
+      throw new HttpException('gx-daemon unreachable', HttpStatus.BAD_GATEWAY);
+    }
+  }
 }
