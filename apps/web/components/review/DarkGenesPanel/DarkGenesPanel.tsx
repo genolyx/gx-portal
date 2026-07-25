@@ -1,8 +1,7 @@
 'use client';
 
-import { useState } from 'react';
+import { Card, Disclosure, Link } from '@heroui/react';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import styles from './DarkGenesPanel.module.css';
 
 interface DetailedSection {
   title?: string;
@@ -21,22 +20,35 @@ interface CftrIvs9Eh {
   [key: string]: unknown;
 }
 
+function sectionBorderClass(kind?: string) {
+  if (!kind || kind === 'normal') return '';
+  if (kind === 'warn')  return 'border-warning/50 bg-warning/5';
+  if (kind === 'alert') return 'border-danger/50 bg-danger/5';
+  if (kind === 'ok')    return 'border-success/50 bg-success/5';
+  return '';
+}
+
+function riskTextClass(level?: string) {
+  if (level === 'high') return 'text-danger font-bold';
+  if (level === 'medium') return 'text-warning font-bold';
+  return 'text-success font-bold';
+}
+
 export function DarkGenesPanel() {
   const { reviewData } = useReviewStore();
-  const [expanded, setExpanded] = useState<Set<number>>(new Set([0]));
 
   const dark = reviewData?.dark_genes;
 
   if (!dark) {
-    return <p className={styles.empty}>No dark gene data available for this order.</p>;
+    return <p className="py-8 text-center text-muted">No dark gene data available for this order.</p>;
   }
 
   const hasData = dark.status === 'found' || dark.summary_text || dark.detailed_sections?.length;
   if (!hasData && !dark.smn && !dark.cftr && !dark.apoe) {
     return (
-      <div className={styles.noData}>
+      <div className="py-8 text-center text-muted">
         <p>Dark gene analysis was not performed or produced no results for this order.</p>
-        {dark.status && <p className={styles.hint}>Status: {String(dark.status)}</p>}
+        {dark.status && <p className="mt-1 text-[11px]">Status: {String(dark.status)}</p>}
       </div>
     );
   }
@@ -46,84 +58,93 @@ export function DarkGenesPanel() {
   const ve        = dark.visual_evidence ?? {};
   const igvHtml   = typeof ve.igv_report_html === 'string' ? ve.igv_report_html : undefined;
 
-  const toggleSection = (i: number) => {
-    setExpanded((prev) => {
-      const next = new Set(prev);
-      if (next.has(i)) next.delete(i); else next.add(i);
-      return next;
-    });
-  };
-
-  const kindClass = (kind?: string) => {
-    if (!kind || kind === 'normal') return '';
-    if (kind === 'warn')  return styles.secWarn;
-    if (kind === 'alert') return styles.secAlert;
-    if (kind === 'ok')    return styles.secOk;
-    return '';
-  };
+  const cftrCardClass = cftrEh?.risk_level === 'high'
+    ? 'border-danger/50 bg-danger/5'
+    : cftrEh?.risk_level === 'medium'
+      ? 'border-warning/50 bg-warning/5'
+      : 'border-success/50 bg-success/5';
 
   return (
-    <div className={styles.wrap}>
-      {/* Summary header */}
+    <div className="flex flex-col gap-3">
       {dark.summary_text && (
-        <details className={styles.summaryDetails}>
-          <summary className={styles.summarySummary}>Summary table</summary>
-          <pre className={styles.summaryPre}>{String(dark.summary_text)}</pre>
-        </details>
+        <Card className="overflow-hidden">
+          <Disclosure>
+            <Disclosure.Heading>
+              <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-3.5 py-2 text-left">
+                <span className="text-xs font-semibold text-muted">Summary table</span>
+                <Disclosure.Indicator />
+              </Disclosure.Trigger>
+            </Disclosure.Heading>
+            <Disclosure.Content>
+              <Disclosure.Body className="border-t border-border p-0">
+                <pre className="m-0 overflow-x-auto whitespace-pre-wrap px-3.5 py-2.5 font-mono text-[11px] text-muted">
+                  {String(dark.summary_text)}
+                </pre>
+              </Disclosure.Body>
+            </Disclosure.Content>
+          </Disclosure>
+        </Card>
       )}
 
-      {/* CFTR IVS9 EH result */}
       {cftrEh && (
-        <div className={`${styles.cftrCard} ${cftrEh.risk_level === 'high' ? styles.secAlert : cftrEh.risk_level === 'medium' ? styles.secWarn : styles.secOk}`}>
-          <h3 className={styles.sectionTitle}>CFTR IVS9 (poly-T / TG) — Expansion Hunter</h3>
-          <div className={styles.kvGrid}>
-            {cftrEh.display_t    && <><dt>Poly-T</dt><dd>{cftrEh.display_t}</dd></>}
-            {cftrEh.display_tg   && <><dt>TG repeat</dt><dd>{cftrEh.display_tg}</dd></>}
-            {cftrEh.per_allele_summary && <><dt>Allele summary</dt><dd>{cftrEh.per_allele_summary}</dd></>}
-            {cftrEh.risk_level   && <><dt>Risk level</dt><dd className={cftrEh.risk_level === 'high' ? styles.textErr : cftrEh.risk_level === 'medium' ? styles.textWarn : styles.textOk}>{cftrEh.risk_level.toUpperCase()}</dd></>}
-            {cftrEh.risk_reasons && cftrEh.risk_reasons.length > 0 && (
-              <><dt>Risk reasons</dt><dd>{cftrEh.risk_reasons.join('; ')}</dd></>
-            )}
-          </div>
-          {cftrEh.locus_note && <p className={styles.hint}>{String(cftrEh.locus_note)}</p>}
-        </div>
+        <Card className={cftrCardClass}>
+          <Card.Header>
+            <Card.Title className="text-[13px]">CFTR IVS9 (poly-T / TG) — Expansion Hunter</Card.Title>
+          </Card.Header>
+          <Card.Content>
+            <dl className="grid grid-cols-[minmax(8rem,auto)_1fr] items-baseline gap-x-4 gap-y-1.5 text-xs">
+              {cftrEh.display_t    && <><dt className="font-semibold text-muted">Poly-T</dt><dd className="m-0 font-mono">{cftrEh.display_t}</dd></>}
+              {cftrEh.display_tg   && <><dt className="font-semibold text-muted">TG repeat</dt><dd className="m-0 font-mono">{cftrEh.display_tg}</dd></>}
+              {cftrEh.per_allele_summary && <><dt className="font-semibold text-muted">Allele summary</dt><dd className="m-0 font-mono">{cftrEh.per_allele_summary}</dd></>}
+              {cftrEh.risk_level   && (
+                <>
+                  <dt className="font-semibold text-muted">Risk level</dt>
+                  <dd className={`m-0 font-mono ${riskTextClass(cftrEh.risk_level)}`}>{cftrEh.risk_level.toUpperCase()}</dd>
+                </>
+              )}
+              {cftrEh.risk_reasons && cftrEh.risk_reasons.length > 0 && (
+                <><dt className="font-semibold text-muted">Risk reasons</dt><dd className="m-0 font-mono">{cftrEh.risk_reasons.join('; ')}</dd></>
+              )}
+            </dl>
+            {cftrEh.locus_note && <p className="mt-2 text-[11px] text-muted">{String(cftrEh.locus_note)}</p>}
+          </Card.Content>
+        </Card>
       )}
 
-      {/* Detailed sections */}
       {sections.length > 0 && (
-        <div className={styles.sectionsStack}>
+        <div className="flex flex-col gap-1.5">
           {sections.map((s, i) => (
-            <div key={i} className={`${styles.secCard} ${kindClass(s.kind)}`}>
-              <div
-                className={styles.secHeader}
-                onClick={() => toggleSection(i)}
-              >
-                <span className={styles.secTitleText}>{s.title ?? `Section ${i + 1}`}</span>
-                <span className={styles.secToggle}>{expanded.has(i) ? '▲' : '▼'}</span>
-              </div>
-              {expanded.has(i) && s.body && (
-                <pre className={styles.secBody}>{String(s.body)}</pre>
-              )}
-            </div>
+            <Card key={i} className={`overflow-hidden ${sectionBorderClass(s.kind)}`}>
+              <Disclosure defaultExpanded={i === 0}>
+                <Disclosure.Heading className="bg-surface">
+                  <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-3 py-2 text-left">
+                    <span className="text-xs font-semibold">{s.title ?? `Section ${i + 1}`}</span>
+                    <Disclosure.Indicator />
+                  </Disclosure.Trigger>
+                </Disclosure.Heading>
+                {s.body && (
+                  <Disclosure.Content>
+                    <Disclosure.Body className="border-t border-border p-0">
+                      <pre className="m-0 overflow-x-auto whitespace-pre-wrap px-3 py-2.5 font-mono text-[11px] leading-relaxed text-muted">
+                        {String(s.body)}
+                      </pre>
+                    </Disclosure.Body>
+                  </Disclosure.Content>
+                )}
+              </Disclosure>
+            </Card>
           ))}
         </div>
       )}
 
-      {/* IGV report link */}
       {igvHtml && (
-        <div style={{ marginTop: 16 }}>
-          <a
-            href={igvHtml}
-            target="_blank"
-            rel="noreferrer"
-            className={styles.igvLink}
-          >
+        <div className="mt-1">
+          <Link href={igvHtml} target="_blank" rel="noreferrer" className="text-xs">
             Open IGV Visual Evidence Report ↗
-          </a>
+          </Link>
         </div>
       )}
 
-      {/* Legacy support: smn/cftr/apoe objects */}
       {dark.smn && !sections.length && (
         <LegacySmnSection smn={dark.smn as Record<string, unknown>} />
       )}
@@ -134,11 +155,11 @@ export function DarkGenesPanel() {
 function LegacySmnSection({ smn }: { smn: Record<string, unknown> }) {
   return (
     <div>
-      <h3 style={{ fontSize: 13, fontWeight: 700, marginBottom: 8 }}>SMN1 / SMN2 Copy Number</h3>
-      <dl style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', gap: '4px 16px', fontSize: 12 }}>
+      <h3 className="mb-2 text-[13px] font-bold">SMN1 / SMN2 Copy Number</h3>
+      <dl className="grid grid-cols-[auto_1fr] gap-x-4 gap-y-1 text-xs">
         {Object.entries(smn).filter(([, v]) => typeof v !== 'object').map(([k, v]) => (
-          <><dt key={`dt-${k}`} style={{ color: 'var(--text-muted)', fontWeight: 600 }}>{k}</dt>
-          <dd key={`dd-${k}`} style={{ margin: 0 }}>{String(v)}</dd></>
+          <><dt key={`dt-${k}`} className="font-semibold text-muted">{k}</dt>
+          <dd key={`dd-${k}`} className="m-0">{String(v)}</dd></>
         ))}
       </dl>
     </div>

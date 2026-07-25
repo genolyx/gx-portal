@@ -2,13 +2,23 @@
 
 import { useEffect, useState, useRef, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  ArrowRight,
+  DatabaseZap,
+  Play,
+  RotateCcw,
+  Square,
+  Trash2,
+  Zap,
+} from 'lucide-react';
+import { Button, Card, Disclosure, Spinner } from '@heroui/react';
+import { RefreshButton } from '../../ui/RefreshButton';
 import { ReportDownloadLink } from '../ReportDownloadLink';
 import { reportLangLabel } from '../../../lib/report-downloads';
 import { ordersApi } from '../../../lib/api/orders';
 import { ApiError } from '../../../lib/api/client';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { OrderStatusBadge } from '../../ui/Badge';
+import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
 import type { Order } from '@gx-portal/types';
 import { cn } from '../../../lib/utils';
 import {
@@ -57,10 +67,12 @@ function Section({ title, children, className }: {
   title: string; children: React.ReactNode; className?: string;
 }) {
   return (
-    <div className={cn('bg-gx-surface border border-gx-border rounded-gx p-4', className)}>
-      <h4 className="text-[11px] font-bold uppercase tracking-widest text-gx-muted mb-3">{title}</h4>
-      {children}
-    </div>
+    <Card className={className}>
+      <Card.Header>
+        <Card.Title className="text-[11px] font-bold uppercase tracking-widest text-muted">{title}</Card.Title>
+      </Card.Header>
+      <Card.Content>{children}</Card.Content>
+    </Card>
   );
 }
 
@@ -81,14 +93,14 @@ function KvItem({ label, value, mono, danger, full, multiline }: {
 }) {
   return (
     <div className={cn('min-w-0', full && 'col-span-full')}>
-      <p className="text-[11px] text-gx-muted uppercase tracking-wider mb-0.5">{label}</p>
+      <p className="text-[11px] text-muted uppercase tracking-wider mb-0.5">{label}</p>
       {multiline ? (
-        <pre className="text-xs text-gx-text font-sans whitespace-pre-wrap break-words">{value ?? '—'}</pre>
+        <pre className="text-xs text-foreground font-sans whitespace-pre-wrap break-words">{value ?? '—'}</pre>
       ) : (
         <p className={cn(
           'text-xs break-all',
           mono && 'font-mono',
-          danger ? 'text-gx-danger' : 'text-gx-text',
+          danger ? 'text-danger' : 'text-foreground',
         )}>
           {value ?? '—'}
         </p>
@@ -101,14 +113,14 @@ function PathItem({ label, path }: { label: string; path?: string | null }) {
   const { dir, base } = pathSplit(path);
   return (
     <div className="col-span-full min-w-0">
-      <p className="text-[11px] text-gx-muted uppercase tracking-wider mb-0.5">{label}</p>
+      <p className="text-[11px] text-muted uppercase tracking-wider mb-0.5">{label}</p>
       {path ? (
         <p className="text-xs font-mono break-all">
-          <span className="text-gx-muted">{dir}</span>
-          <span className="text-gx-text font-semibold">{base}</span>
+          <span className="text-muted">{dir}</span>
+          <span className="text-foreground font-semibold">{base}</span>
         </p>
       ) : (
-        <p className="text-xs text-gx-muted">—</p>
+        <p className="text-xs text-muted">—</p>
       )}
     </div>
   );
@@ -132,7 +144,7 @@ function ReportFilesSection({ orderId, status }: { orderId: string; status: stri
   if (!['COMPLETED', 'REPORT_READY'].includes(status)) return null;
   if (!files) return (
     <Section title="Report Files">
-      <p className="text-xs text-gx-muted">Loading…</p>
+      <p className="text-xs text-muted">Loading…</p>
     </Section>
   );
 
@@ -141,7 +153,7 @@ function ReportFilesSection({ orderId, status }: { orderId: string; status: stri
 
   if (reportFiles.length === 0) return (
     <Section title="Report Files">
-      <p className="text-xs text-gx-muted">
+      <p className="text-xs text-muted">
         No <code>Report_*</code> files yet. Open <strong>Review → Report</strong>, select languages, then <strong>Generate Report</strong>.
       </p>
     </Section>
@@ -149,7 +161,7 @@ function ReportFilesSection({ orderId, status }: { orderId: string; status: stri
 
   return (
     <Section title="Report Files">
-      <p className="text-[11px] text-gx-muted mb-3">
+      <p className="text-[11px] text-muted mb-3">
         One PDF/HTML per language: <code>Report_&#123;order&#125;_&#123;patient&#125;_&#123;LANG&#125;.ext</code>.
         Generate in <strong>Review → Report</strong> with language checkboxes.
       </p>
@@ -340,7 +352,7 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
     if (copyHintTimerRef.current) clearTimeout(copyHintTimerRef.current);
   }, []);
 
-  const fetchLog = useCallback(async () => {
+  const fetchLog = useCallback(async (manual = false) => {
     try {
       const text = await ordersApi.getLog(orderId);
       setLog(text || '(empty)');
@@ -350,6 +362,7 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
       setLog(msg.includes('not found') || msg.includes('404')
         ? `${msg}\n\nPipeline may still be starting — try Refresh in a few seconds.`
         : msg);
+      if (manual) throw e instanceof Error ? e : new Error(msg);
     } finally {
       setLoading(false);
     }
@@ -370,64 +383,64 @@ function PipelineLogPanel({ orderId, status }: { orderId: string; status: string
 
   return (
     <>
-    <div className="border border-gx-border rounded-gx overflow-hidden">
-      <div className="flex items-center justify-between gap-3 px-4 py-2.5 bg-gx-elevated">
-        <button
-          type="button"
-          onClick={() => setOpen(v => !v)}
-          className="min-w-0 flex-1 text-left hover:opacity-80 transition-opacity"
+      <Card>
+        <Disclosure isExpanded={open} onExpandedChange={setOpen}>
+          <div className="flex items-center gap-2 px-4 py-2.5">
+            <Disclosure.Heading className="min-w-0 flex-1">
+              <Disclosure.Trigger className="flex w-full items-start justify-between gap-3 text-left">
+                <span className="min-w-0">
+                  <span className="block text-xs font-semibold uppercase tracking-wide text-muted">
+                    Pipeline Log (nextflow.log)
+                  </span>
+                  <span className="mt-0.5 block text-[10px] font-normal normal-case text-muted">
+                    Timestamps in the log file are written by Nextflow as-is (not converted by Portal).
+                  </span>
+                </span>
+                <Disclosure.Indicator className="mt-0.5 shrink-0" />
+              </Disclosure.Trigger>
+            </Disclosure.Heading>
+            {open && (
+              <RefreshButton
+                variant="ghost"
+                label="Refresh"
+                successToast="Log refreshed"
+                isLoading={loading}
+                onPress={() => {
+                  setLoading(true);
+                  return fetchLog(true);
+                }}
+              />
+            )}
+          </div>
+          <Disclosure.Content>
+            <Disclosure.Body className="border-t border-border p-0">
+              {loading ? (
+                <div className="flex items-center gap-2 px-4 py-3 text-sm text-muted">
+                  <Spinner size="md" color="current" />
+                  Loading log…
+                </div>
+              ) : (
+                <pre
+                  ref={preRef}
+                  onMouseUp={handleLogMouseUp}
+                  className="m-0 max-h-[calc(11px*1.45*30)] select-text overflow-auto whitespace-pre-wrap bg-background p-4 font-mono text-[11px] leading-[1.45] text-success"
+                >
+                  {log || '(empty)'}
+                </pre>
+              )}
+            </Disclosure.Body>
+          </Disclosure.Content>
+        </Disclosure>
+      </Card>
+      {copyHint && (
+        <div
+          className="fixed bottom-[68px] right-6 z-[9999] pointer-events-none rounded-md bg-success px-3 py-1.5 text-xs text-white transition-opacity"
+          role="status"
+          aria-live="polite"
         >
-          <span className="text-xs font-semibold text-gx-text-2 uppercase tracking-wide">
-            Pipeline Log (nextflow.log)
-          </span>
-          <span className="block text-[10px] font-normal normal-case text-gx-muted mt-0.5">
-            Timestamps in the log file are written by Nextflow as-is (not converted by Portal).
-          </span>
-        </button>
-        <div className="flex items-center gap-2 shrink-0">
-          {open && (
-            <button
-              type="button"
-              className="text-[11px] font-normal leading-none text-gx-muted hover:text-gx-accent hover:underline p-0 bg-transparent border-0"
-              onClick={() => { setLoading(true); void fetchLog(); }}
-            >
-              Refresh
-            </button>
-          )}
-          <button
-            type="button"
-            onClick={() => setOpen(v => !v)}
-            className="text-[11px] font-normal leading-none text-gx-muted hover:opacity-80 p-0 bg-transparent border-0"
-          >
-            {open ? '▲ collapse' : '▼ expand'}
-          </button>
-        </div>
-      </div>
-      {open && (
-        <div className="bg-[#0a0c12] border-t border-gx-border">
-          {loading ? (
-            <p className="text-xs text-gx-muted px-4 py-3">Loading log…</p>
-          ) : (
-            <pre
-              ref={preRef}
-              onMouseUp={handleLogMouseUp}
-              className="text-[11px] leading-[1.45] text-green-400 font-mono p-4 overflow-auto whitespace-pre-wrap max-h-[calc(11px*1.45*30)] select-text"
-            >
-              {log || '(empty)'}
-            </pre>
-          )}
+          {copyHint}
         </div>
       )}
-    </div>
-    {copyHint && (
-      <div
-        className="fixed bottom-[68px] right-6 z-[9999] rounded-md bg-gx-success text-white text-xs px-3 py-1.5 pointer-events-none shadow-gx-md transition-opacity"
-        role="status"
-        aria-live="polite"
-      >
-        {copyHint}
-      </div>
-    )}
     </>
   );
 }
@@ -451,46 +464,94 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
   const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status);
 
   return (
-    <div className="flex flex-wrap gap-2 items-center mb-5 p-3 bg-gx-surface border border-gx-border rounded-gx">
-      <span className="text-[11px] text-gx-muted flex-1 min-w-[200px]">
+    <div className="flex flex-wrap gap-2 items-center mb-5 p-3 bg-surface border border-border rounded-lg">
+      <span className="text-[11px] text-muted flex-1 min-w-[200px]">
         Click a row to open detail. Use buttons to control the pipeline.
       </span>
       {canReview && (
-        <Button variant="primary" size="sm" onClick={() => router.push(`/review/${order.order_id}`)}>
+        <Button
+          variant="primary"
+          size="sm"
+          onPress={() => router.push(`/review/${order.order_id}`)}
+          className="gap-1.5"
+        >
           Open Review
+          <ArrowRight size={14} strokeWidth={2} aria-hidden />
         </Button>
       )}
       {canStart && (<>
-        <Button variant="primary" size="sm" loading={busy}
-          onClick={() => run('Start', () => ordersApi.start(order.order_id))}>
-          ▶ Start
+        <Button
+          variant="primary"
+          size="sm"
+          isDisabled={busy}
+          onPress={() => run('Start', () => ordersApi.start(order.order_id))}
+          className="gap-1.5"
+        >
+          <Play size={14} strokeWidth={2} aria-hidden />
+          {busy ? 'Starting…' : 'Start'}
         </Button>
-        <Button variant="secondary" size="sm" loading={busy}
-          onClick={() => run('Force Run', () => ordersApi.start(order.order_id))}>
-          ▶ Force Run
+        <Button
+          variant="secondary"
+          size="sm"
+          isDisabled={busy}
+          onPress={() => run('Force Run', () => ordersApi.start(order.order_id))}
+          className="gap-1.5"
+        >
+          <Zap size={14} strokeWidth={2} aria-hidden />
+          {busy ? 'Running…' : 'Force Run'}
         </Button>
-        <Button variant="secondary" size="sm" loading={busy}
-          onClick={() => run('Force Run (Fresh)', () => ordersApi.start(order.order_id, { fresh: true }))}>
-          ▶ Force Run (Fresh)
+        <Button
+          variant="secondary"
+          size="sm"
+          isDisabled={busy}
+          onPress={() => run('Force Run (Fresh)', () => ordersApi.start(order.order_id, { fresh: true }))}
+          className="gap-1.5"
+        >
+          <Zap size={14} strokeWidth={2} aria-hidden />
+          {busy ? 'Running…' : 'Force Run (Fresh)'}
         </Button>
       </>)}
       {canStop && (
-        <Button variant="danger" size="sm" loading={busy}
-          onClick={() => run('Stop', () => ordersApi.stop(order.order_id))}>
-          ■ Stop
+        <Button
+          variant="danger"
+          size="sm"
+          isDisabled={busy}
+          onPress={() => run('Stop', () => ordersApi.stop(order.order_id))}
+          className="gap-1.5"
+        >
+          <Square size={14} strokeWidth={2} aria-hidden />
+          {busy ? 'Stopping…' : 'Stop'}
         </Button>
       )}
-      <Button variant="ghost" size="sm" loading={busy}
-        onClick={() => run('Reprocess only', () => ordersApi.reprocess(order.order_id))}>
-        ↺ Reprocess only
+      <Button
+        variant="ghost"
+        size="sm"
+        isDisabled={busy}
+        onPress={() => run('Reprocess only', () => ordersApi.reprocess(order.order_id))}
+        className="gap-1.5"
+      >
+        <RotateCcw size={14} strokeWidth={2} aria-hidden />
+        {busy ? 'Working…' : 'Reprocess only'}
       </Button>
-      <Button variant="ghost" size="sm" loading={busy}
-        onClick={() => run('Delete', () => ordersApi.deleteRun(order.order_id))}>
-        ✕ Delete
+      <Button
+        variant="ghost"
+        size="sm"
+        isDisabled={busy}
+        onPress={() => run('Delete', () => ordersApi.deleteRun(order.order_id))}
+        className="gap-1.5"
+      >
+        <Trash2 size={14} strokeWidth={2} aria-hidden />
+        {busy ? 'Working…' : 'Delete'}
       </Button>
-      <Button variant="danger" size="sm" loading={busy}
-        onClick={() => run('Purge DB', () => ordersApi.purgeDb(order.order_id))}>
-        ⊗ Purge
+      <Button
+        variant="danger"
+        size="sm"
+        isDisabled={busy}
+        onPress={() => run('Purge DB', () => ordersApi.purgeDb(order.order_id))}
+        className="gap-1.5"
+      >
+        <DatabaseZap size={14} strokeWidth={2} aria-hidden />
+        {busy ? 'Working…' : 'Purge'}
       </Button>
     </div>
   );
@@ -647,13 +708,13 @@ export function OrderDetailPage({ id }: { id: string }) {
 
   useEffect(() => { load(); }, [load]);
 
-  if (loading) return <p className="p-8 text-gx-muted text-sm">Loading…</p>;
+  if (loading) return <p className="p-8 text-muted text-sm">Loading…</p>;
   if (error) {
     return (
       <div className="p-8">
         <PageHeader title="Order Detail" backHref="/orders" />
-        <p className="text-gx-danger text-sm mb-4">{error}</p>
-        <Button variant="secondary" size="sm" onClick={() => router.push('/orders')}>
+        <p className="text-danger text-sm mb-4">{error}</p>
+        <Button variant="secondary" size="sm" onPress={() => router.push('/orders')}>
           Back to Orders
         </Button>
       </div>
@@ -675,14 +736,14 @@ export function OrderDetailPage({ id }: { id: string }) {
       {/* Header row */}
       <div className="flex items-start justify-between gap-4 mb-4">
         <div>
-          <code className="text-base font-bold text-gx-text font-mono">{order.order_id}</code>
+          <code className="text-base font-bold text-foreground font-mono">{order.order_id}</code>
           {(order.description || order.legacy_order_id) && (
-            <p className="text-sm text-gx-muted mt-1">
+            <p className="text-sm text-muted mt-1">
               Description:{' '}
-              <code className="font-mono text-gx-text-2">{order.description ?? order.legacy_order_id}</code>
+              <code className="font-mono text-muted">{order.description ?? order.legacy_order_id}</code>
             </p>
           )}
-          <p className="text-sm text-gx-muted mt-0.5">{order.service_code}</p>
+          <p className="text-sm text-muted mt-0.5">{order.service_code}</p>
         </div>
         <OrderStatusBadge status={order.status} />
       </div>
@@ -717,7 +778,7 @@ export function OrderDetailPage({ id }: { id: string }) {
           </KvGrid>
 
           {/* FASTQ paths */}
-          <div className="mt-3 pt-3 border-t border-gx-border">
+          <div className="mt-3 pt-3 border-t border-border">
             <div className="grid grid-cols-1 gap-2">
               <PathItem label="R1 FASTQ" path={order.fastq_r1_path} />
               <PathItem label="R2 FASTQ" path={order.fastq_r2_path} />
@@ -728,7 +789,7 @@ export function OrderDetailPage({ id }: { id: string }) {
         {/* 3. Pipeline command (if present) */}
         {pipelineCmd && (
           <Section title="Pipeline Command">
-            <pre className="text-[11px] font-mono text-gx-text-2 whitespace-pre-wrap break-all bg-gx-elevated rounded-gx-sm p-3">
+            <pre className="text-[11px] font-mono text-muted whitespace-pre-wrap break-all bg-surface-secondary rounded-md p-3 m-0">
               {pipelineCmd}
             </pre>
           </Section>

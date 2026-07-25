@@ -2,7 +2,6 @@
 
 import { useEffect, useRef, forwardRef, useImperativeHandle } from 'react';
 import type { CoverageContext } from '@gx-portal/types';
-import styles from './CoverageViewer.module.css';
 
 declare global {
   interface Window {
@@ -150,7 +149,7 @@ const IgvBrowser = forwardRef<IgvBrowserHandle, Props>(function IgvBrowser({ con
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [context, orderId]);
 
-  return <div ref={containerRef} className={styles.igvContainer} />;
+  return <div ref={containerRef} className="min-h-[500px] flex-1" />;
 });
 
 export default IgvBrowser;

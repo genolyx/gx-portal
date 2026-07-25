@@ -1,16 +1,46 @@
 'use client';
 
 import { useState, useMemo, useCallback } from 'react';
+import { Button, Card, Checkbox, Chip, Input, ListBox, Select } from '@heroui/react';
+import {
+  ChevronDown,
+  ChevronUp,
+  ListChecks,
+  ListX,
+  ShieldAlert,
+  Tags,
+  X,
+} from 'lucide-react';
 import { reviewApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import { Button } from '../../ui/Button';
-import { Badge } from '../../ui/Badge';
 import type { Variant, AcmgClass } from '@gx-portal/types';
-import styles from './VariantTable.module.css';
 
-// ─── constants ────────────────────────────────────────────────────────────────
+function TableCheckbox({
+  isSelected,
+  onChange,
+  'aria-label': ariaLabel,
+}: {
+  isSelected: boolean;
+  onChange: (selected: boolean) => void;
+  'aria-label': string;
+}) {
+  return (
+    <Checkbox
+      isSelected={isSelected}
+      onChange={onChange}
+      aria-label={ariaLabel}
+      className="inline-flex justify-center"
+    >
+      <Checkbox.Content>
+        <Checkbox.Control>
+          <Checkbox.Indicator />
+        </Checkbox.Control>
+      </Checkbox.Content>
+    </Checkbox>
+  );
+}
 
-const ACMG_VARIANT: Record<string, 'danger' | 'warning' | 'default' | 'success'> = {
+const ACMG_COLOR: Record<string, 'danger' | 'warning' | 'default' | 'success'> = {
   Pathogenic: 'danger',
   Likely_pathogenic: 'warning',
   'Likely pathogenic': 'warning',
@@ -39,13 +69,49 @@ type SortKey =
   | 'clinvar_sig_primary' | 'acmg_classification';
 type SortDir = 'asc' | 'desc' | null;
 
-// ─── helpers ──────────────────────────────────────────────────────────────────
+function FilterSelect({
+  value,
+  onChange,
+  options,
+  ariaLabel,
+  className,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  options: { value: string; label: string }[];
+  ariaLabel?: string;
+  className?: string;
+}) {
+  const items = options.map((o) => ({ id: o.value || '__all__', label: o.label }));
+  return (
+    <Select
+      selectedKey={value || '__all__'}
+      onSelectionChange={(key) => onChange(key === '__all__' ? '' : String(key))}
+      aria-label={ariaLabel ?? options[0]?.label}
+      className={className}
+    >
+      <Select.Trigger className="min-w-[120px]">
+        <Select.Value />
+        <Select.Indicator />
+      </Select.Trigger>
+      <Select.Popover>
+        <ListBox items={items}>
+          {(item) => (
+            <ListBox.Item id={item.id} textValue={item.label}>
+              {item.label}
+            </ListBox.Item>
+          )}
+        </ListBox>
+      </Select.Popover>
+    </Select>
+  );
+}
 
 function clinvarLabel(v: Variant): string {
   return v.clinvar_sig_primary ?? v.clinvar_sig ?? v.clinvar_significance ?? '';
 }
 
-function clinvarVariant(label: string): 'danger' | 'warning' | 'default' | 'success' {
+function clinvarColor(label: string): 'danger' | 'warning' | 'default' | 'success' {
   const l = label.toLowerCase();
   if (l.includes('pathogenic') && !l.includes('likely')) return 'danger';
   if (l.includes('likely pathogenic')) return 'warning';
@@ -94,8 +160,6 @@ function sortValue(v: Variant, key: SortKey): string | number {
   }
 }
 
-// ─── sub-components ───────────────────────────────────────────────────────────
-
 function SortableTh({
   label, sortKey, current, dir, onSort, title, className,
 }: {
@@ -111,61 +175,65 @@ function SortableTh({
   const arrow = active && dir === 'asc' ? ' ▲' : active && dir === 'desc' ? ' ▼' : '';
   return (
     <th
-      className={`${styles.sortable} ${active ? styles.sortActive : ''} ${className ?? ''}`}
+      className={`cursor-pointer select-none px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted hover:text-accent hover:underline ${active ? 'text-accent' : ''} ${className ?? ''}`}
       title={title}
       onClick={() => onSort(sortKey)}
     >
-      {label}{arrow && <span className={styles.sortArrow}>{arrow}</span>}
+      {label}{arrow && <span className="ml-0.5 text-[9px] opacity-65">{arrow}</span>}
     </th>
   );
 }
 
 function VariantDetail({ variant: v, onClose }: { variant: Variant; onClose: () => void }) {
   return (
-    <div className={styles.detailPanel}>
-      <div className={styles.detailHeader}>
-        <strong>{v.gene} — {v.hgvsc ?? `${v.chrom}:${v.pos} ${v.ref}>${v.alt}`}</strong>
-        <button type="button" className={styles.detailClose} onClick={onClose}>✕</button>
-      </div>
-      <div className={styles.detailGrid}>
-        {v.hgvsp && <><dt>HGVSp</dt><dd><code>{v.hgvsp}</code></dd></>}
-        <dt>Transcript (NM)</dt><dd><code>{v.clinical_nm ?? v.transcript ?? '—'}</code></dd>
-        <dt>Canonical ENST</dt><dd><code>{v.canonical_enst ?? '—'}</code></dd>
-        <dt>Effect</dt><dd>{v.effect ?? '—'}</dd>
-        <dt>Zygosity</dt><dd>{v.zygosity ?? '—'}</dd>
-        <dt>GT</dt><dd>{v.gt ?? '—'}</dd>
-        <dt>DP / REF / ALT</dt><dd>{v.dp ?? '—'} / {v.ref_depth ?? '—'} / {v.alt_depth ?? '—'}</dd>
-        <dt>VAF</dt><dd>{v.vaf != null ? (v.vaf * 100).toFixed(1) + '%' : '—'}</dd>
-        <dt>gnomAD AF (exomes)</dt><dd>{fmtAf(v.gnomad_exomes_af)}</dd>
-        <dt>gnomAD AF (genomes)</dt><dd>{fmtAf(v.gnomad_genomes_af)}</dd>
-        <dt>ClinVar sig.</dt><dd>{clinvarLabel(v) || '—'}</dd>
-        <dt>ClinVar ID</dt><dd>{v.clinvar_variation_id ?? v.clinvar_id ?? '—'}</dd>
-        <dt>dbSNP</dt><dd>{v.dbsnp_rsid ?? '—'}</dd>
-        <dt>HGMD class</dt><dd>{v.hgmd_class ?? '—'}</dd>
-        <dt>ACMG</dt><dd>{v.acmg_classification ?? '—'}</dd>
-        {v.acmg_criteria && v.acmg_criteria.length > 0 && (
-          <><dt>ACMG criteria</dt><dd>{v.acmg_criteria.join(', ')}</dd></>
-        )}
-        {v.acmg_reasoning && (
-          <><dt>ACMG reasoning</dt><dd className={styles.detailPre}>{v.acmg_reasoning}</dd></>
-        )}
-        <dt>Diseases</dt><dd>{v.diseases?.join('; ') ?? v.disease ?? '—'}</dd>
-        <dt>Inheritance</dt><dd>{v.inheritance ?? '—'}</dd>
-        {v.tags && v.tags.length > 0 && (
-          <><dt>Tags</dt><dd>{v.tags.join(', ')}</dd></>
-        )}
-        {v.curated_classification && (
-          <><dt>Curated classification</dt><dd>{v.curated_classification}</dd></>
-        )}
-        {v.curated_notes && (
-          <><dt>Curated notes</dt><dd>{v.curated_notes}</dd></>
-        )}
-      </div>
-    </div>
+    <Card className="mb-3">
+      <Card.Header className="flex-row items-start justify-between gap-2">
+        <Card.Title className="text-[13px]">
+          {v.gene} — {v.hgvsc ?? `${v.chrom}:${v.pos} ${v.ref}>${v.alt}`}
+        </Card.Title>
+        <Button type="button" variant="ghost" size="sm" isIconOnly onPress={onClose} aria-label="Close detail">
+          <X size={15} strokeWidth={2} aria-hidden />
+        </Button>
+      </Card.Header>
+      <Card.Content>
+        <dl className="grid grid-cols-[minmax(10rem,auto)_1fr] items-baseline gap-x-4 gap-y-1.5 text-xs">
+          {v.hgvsp && <><dt className="font-semibold text-muted">HGVSp</dt><dd className="m-0 font-mono"><code>{v.hgvsp}</code></dd></>}
+          <dt className="font-semibold text-muted">Transcript (NM)</dt><dd className="m-0 font-mono"><code>{v.clinical_nm ?? v.transcript ?? '—'}</code></dd>
+          <dt className="font-semibold text-muted">Canonical ENST</dt><dd className="m-0 font-mono"><code>{v.canonical_enst ?? '—'}</code></dd>
+          <dt className="font-semibold text-muted">Effect</dt><dd className="m-0">{v.effect ?? '—'}</dd>
+          <dt className="font-semibold text-muted">Zygosity</dt><dd className="m-0">{v.zygosity ?? '—'}</dd>
+          <dt className="font-semibold text-muted">GT</dt><dd className="m-0">{v.gt ?? '—'}</dd>
+          <dt className="font-semibold text-muted">DP / REF / ALT</dt><dd className="m-0">{v.dp ?? '—'} / {v.ref_depth ?? '—'} / {v.alt_depth ?? '—'}</dd>
+          <dt className="font-semibold text-muted">VAF</dt><dd className="m-0">{v.vaf != null ? (v.vaf * 100).toFixed(1) + '%' : '—'}</dd>
+          <dt className="font-semibold text-muted">gnomAD AF (exomes)</dt><dd className="m-0 font-mono">{fmtAf(v.gnomad_exomes_af)}</dd>
+          <dt className="font-semibold text-muted">gnomAD AF (genomes)</dt><dd className="m-0 font-mono">{fmtAf(v.gnomad_genomes_af)}</dd>
+          <dt className="font-semibold text-muted">ClinVar sig.</dt><dd className="m-0">{clinvarLabel(v) || '—'}</dd>
+          <dt className="font-semibold text-muted">ClinVar ID</dt><dd className="m-0">{v.clinvar_variation_id ?? v.clinvar_id ?? '—'}</dd>
+          <dt className="font-semibold text-muted">dbSNP</dt><dd className="m-0">{v.dbsnp_rsid ?? '—'}</dd>
+          <dt className="font-semibold text-muted">HGMD class</dt><dd className="m-0">{v.hgmd_class ?? '—'}</dd>
+          <dt className="font-semibold text-muted">ACMG</dt><dd className="m-0">{v.acmg_classification ?? '—'}</dd>
+          {v.acmg_criteria && v.acmg_criteria.length > 0 && (
+            <><dt className="font-semibold text-muted">ACMG criteria</dt><dd className="m-0">{v.acmg_criteria.join(', ')}</dd></>
+          )}
+          {v.acmg_reasoning && (
+            <><dt className="font-semibold text-muted">ACMG reasoning</dt><dd className="m-0 whitespace-pre-wrap font-sans text-[11px] leading-snug text-muted">{v.acmg_reasoning}</dd></>
+          )}
+          <dt className="font-semibold text-muted">Diseases</dt><dd className="m-0">{v.diseases?.join('; ') ?? v.disease ?? '—'}</dd>
+          <dt className="font-semibold text-muted">Inheritance</dt><dd className="m-0">{v.inheritance ?? '—'}</dd>
+          {v.tags && v.tags.length > 0 && (
+            <><dt className="font-semibold text-muted">Tags</dt><dd className="m-0">{v.tags.join(', ')}</dd></>
+          )}
+          {v.curated_classification && (
+            <><dt className="font-semibold text-muted">Curated classification</dt><dd className="m-0">{v.curated_classification}</dd></>
+          )}
+          {v.curated_notes && (
+            <><dt className="font-semibold text-muted">Curated notes</dt><dd className="m-0">{v.curated_notes}</dd></>
+          )}
+        </dl>
+      </Card.Content>
+    </Card>
   );
 }
-
-// ─── main component ───────────────────────────────────────────────────────────
 
 export function VariantTable({ orderId }: { orderId: string }) {
   const {
@@ -175,7 +243,6 @@ export function VariantTable({ orderId }: { orderId: string }) {
 
   const [classifying, setClassifying] = useState(false);
 
-  // Filters
   const [search, setSearch] = useState('');
   const [acmgFilter, setAcmgFilter] = useState('');
   const [geneFilter, setGeneFilter] = useState('');
@@ -185,26 +252,22 @@ export function VariantTable({ orderId }: { orderId: string }) {
   const [vafFrom, setVafFrom] = useState('');
   const [vafTo, setVafTo] = useState('');
 
-  // Sorting
   const [sortKey, setSortKey] = useState<SortKey | null>(null);
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
-  // Expanded detail
   const [detailId, setDetailId] = useState<string | null>(null);
 
   const variants = reviewData?.variants ?? [];
 
-  // Build gene list for dropdown
   const geneOptions = useMemo(() => {
     const genes = [...new Set(variants.map((v) => v.gene).filter(Boolean))].sort();
-    return genes;
+    return [{ value: '', label: 'All Genes' }, ...genes.map((g) => ({ value: g!, label: g! }))];
   }, [variants]);
 
-  // Build tag list
   const tagOptions = useMemo(() => {
     const tags = new Set<string>();
     variants.forEach((v) => v.tags?.forEach((t) => tags.add(t)));
-    return [...tags].sort();
+    return [{ value: '', label: 'All tags' }, ...[...tags].sort().map((t) => ({ value: t, label: t }))];
   }, [variants]);
 
   const handleSort = useCallback((key: SortKey) => {
@@ -295,91 +358,102 @@ export function VariantTable({ orderId }: { orderId: string }) {
 
   const thProps = { current: sortKey, dir: sortDir, onSort: handleSort };
 
+  const acmgOptions = [
+    { value: '', label: 'All Classifications' },
+    ...ACMG_CLASSES.map((c) => ({ value: c, label: c.replace(/_/g, ' ') })),
+  ];
+
+  const vafModeOptions = [
+    { value: '', label: 'Any' },
+    { value: 'include', label: 'Show range' },
+    { value: 'exclude', label: 'Hide range' },
+  ];
+
   return (
     <div>
-      {/* ── Toolbar ── */}
-      <div className={styles.toolbar}>
-        <input
+      <div className="mb-2.5 flex flex-wrap items-center gap-2">
+        <Input
           placeholder="Search gene, position, disease…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          className={styles.filterInput}
-          style={{ maxWidth: 260 }}
+          className="max-w-[260px]"
+          aria-label="Search variants"
         />
-        <select value={acmgFilter} onChange={(e) => setAcmgFilter(e.target.value)} className={styles.filterInput}>
-          <option value="">All Classifications</option>
-          {ACMG_CLASSES.map((c) => <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>)}
-        </select>
-        <select value={geneFilter} onChange={(e) => setGeneFilter(e.target.value)} className={styles.filterInput}>
-          <option value="">All Genes</option>
-          {geneOptions.map((g) => <option key={g} value={g}>{g}</option>)}
-        </select>
-        <select value={clinvarFilter} onChange={(e) => setClinvarFilter(e.target.value)} className={styles.filterInput}>
-          {CLINVAR_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-        </select>
-        {tagOptions.length > 0 && (
-          <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={styles.filterInput}>
-            <option value="">All tags</option>
-            {tagOptions.map((t) => <option key={t} value={t}>{t}</option>)}
-          </select>
+        <FilterSelect value={acmgFilter} onChange={setAcmgFilter} options={acmgOptions} ariaLabel="ACMG classification" />
+        <FilterSelect value={geneFilter} onChange={setGeneFilter} options={geneOptions} ariaLabel="Gene filter" />
+        <FilterSelect value={clinvarFilter} onChange={setClinvarFilter} options={CLINVAR_OPTIONS} ariaLabel="ClinVar filter" />
+        {tagOptions.length > 1 && (
+          <FilterSelect value={tagFilter} onChange={setTagFilter} options={tagOptions} ariaLabel="Tag filter" />
         )}
 
-        {/* VAF filter */}
-        <span className={styles.muted} style={{ fontSize: 11, fontWeight: 600 }}>VAF</span>
-        <select value={vafMode} onChange={(e) => setVafMode(e.target.value)} className={styles.filterInput}>
-          <option value="">Any</option>
-          <option value="include">Show range</option>
-          <option value="exclude">Hide range</option>
-        </select>
+        <span className="text-[11px] font-semibold text-muted">VAF</span>
+        <FilterSelect value={vafMode} onChange={setVafMode} options={vafModeOptions} ariaLabel="VAF mode" className="min-w-[100px]" />
         {vafMode && (
           <>
-            <input
+            <Input
               type="number" min={0} max={100} step={0.1} placeholder="from %"
               value={vafFrom} onChange={(e) => setVafFrom(e.target.value)}
-              className={styles.filterInput} style={{ width: 72 }}
+              className="w-[72px]" aria-label="VAF from"
             />
-            <span className={styles.muted}>–</span>
-            <input
+            <span className="text-muted">–</span>
+            <Input
               type="number" min={0} max={100} step={0.1} placeholder="to %"
               value={vafTo} onChange={(e) => setVafTo(e.target.value)}
-              className={styles.filterInput} style={{ width: 72 }}
+              className="w-[72px]" aria-label="VAF to"
             />
           </>
         )}
 
-        <span className={styles.count}>{sorted.length} variant{sorted.length !== 1 ? 's' : ''}</span>
+        <span className="whitespace-nowrap text-[11px] text-muted">
+          {sorted.length} variant{sorted.length !== 1 ? 's' : ''}
+        </span>
 
-        <div className={styles.actions}>
-          <Button size="sm" variant="secondary" loading={classifying} onClick={handleClassify}>
-            🔍 Classify
+        <div className="ml-auto flex flex-wrap items-center gap-1.5">
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={classifying}
+            onPress={() => void handleClassify()}
+            className="gap-1.5"
+          >
+            <Tags size={14} strokeWidth={2} aria-hidden />
+            {classifying ? 'Classifying…' : 'Classify'}
           </Button>
-          <Button size="sm" variant="ghost" onClick={autoSelectPathogenic}>Select P/LP</Button>
-          <Button size="sm" variant="ghost" onClick={() => selectAll(visibleIds)}>Select All Visible</Button>
-          <Button size="sm" variant="ghost" onClick={clearSelection}>Deselect All</Button>
-          <span className={styles.count}>
+          <Button size="sm" variant="ghost" onPress={autoSelectPathogenic} className="gap-1.5">
+            <ShieldAlert size={14} strokeWidth={2} aria-hidden />
+            Select P/LP
+          </Button>
+          <Button size="sm" variant="ghost" onPress={() => selectAll(visibleIds)} className="gap-1.5">
+            <ListChecks size={14} strokeWidth={2} aria-hidden />
+            Select All Visible
+          </Button>
+          <Button size="sm" variant="ghost" onPress={clearSelection} className="gap-1.5">
+            <ListX size={14} strokeWidth={2} aria-hidden />
+            Deselect All
+          </Button>
+          <span className="whitespace-nowrap text-[11px] text-muted">
             {selectedVariants.size} selected
           </span>
         </div>
       </div>
 
-      {/* ── Detail panel ── */}
       {detailId && (() => {
         const v = variants.find((x) => x.variant_id === detailId);
         return v ? <VariantDetail variant={v} onClose={() => setDetailId(null)} /> : null;
       })()}
 
       {sorted.length === 0 ? (
-        <p className={styles.empty}>No variants match the current filters.</p>
+        <p className="py-8 text-center text-muted">No variants match the current filters.</p>
       ) : (
-        <div className={styles.tableWrap}>
-          <table>
+        <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
+          <table className="w-full border-collapse text-xs">
             <thead>
-              <tr>
-                <th style={{ width: 40, textAlign: 'center' }}>
-                  <input
-                    type="checkbox"
-                    checked={allVisibleSelected}
-                    onChange={(e) => e.target.checked ? selectAll(visibleIds) : clearSelection()}
+              <tr className="border-b border-border">
+                <th className="sticky top-0 z-10 w-10 bg-surface px-2.5 py-1.5 text-center">
+                  <TableCheckbox
+                    isSelected={allVisibleSelected}
+                    aria-label="Select all visible variants"
+                    onChange={(checked) => (checked ? selectAll(visibleIds) : clearSelection())}
                   />
                 </th>
                 <SortableTh label="Gene"         sortKey="gene"              {...thProps} />
@@ -388,13 +462,13 @@ export function VariantTable({ orderId }: { orderId: string }) {
                 <SortableTh label="Transcript (NM)" sortKey="clinical_nm"    {...thProps} title="Clinical NM transcript" />
                 <SortableTh label="Effect"       sortKey="effect"            {...thProps} />
                 <SortableTh label="Zygosity"     sortKey="zygosity"          {...thProps} />
-                <th title="REF/ALT depth">Allele depth</th>
+                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted" title="REF/ALT depth">Allele depth</th>
                 <SortableTh label="gnomAD AF"    sortKey="gnomad_af"         {...thProps} />
                 <SortableTh label="ClinVar"      sortKey="clinvar_sig_primary" {...thProps} />
                 <SortableTh label="ACMG"         sortKey="acmg_classification" {...thProps} />
-                <th>Tags</th>
-                <th>Disease</th>
-                <th>Action</th>
+                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Tags</th>
+                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Disease</th>
+                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Action</th>
               </tr>
             </thead>
             <tbody>
@@ -418,8 +492,6 @@ export function VariantTable({ orderId }: { orderId: string }) {
   );
 }
 
-// ─── row ──────────────────────────────────────────────────────────────────────
-
 function VariantRow({
   variant: v, selected, expanded, onToggle, onDetail, comment, onCommentChange,
 }: {
@@ -432,70 +504,89 @@ function VariantRow({
   onCommentChange: (c: { classification?: AcmgClass; comment?: string }) => void;
 }) {
   const cvLabel = clinvarLabel(v);
+  const rowClass = selected ? 'bg-accent/10' : expanded ? 'bg-accent/5' : 'hover:bg-accent/5';
+
+  const overrideOptions = [
+    { value: '', label: '— auto —' },
+    ...ACMG_CLASSES.map((c) => ({ value: c, label: c.replace(/_/g, ' ') })),
+  ];
 
   return (
-    <tr className={`${selected ? styles.selected : ''} ${expanded ? styles.expanded : ''}`}>
-      <td style={{ textAlign: 'center' }}>
-        <input type="checkbox" checked={selected} onChange={onToggle} />
+    <tr className={`border-b border-border ${rowClass}`}>
+      <td className="px-2.5 py-1 text-center">
+        <TableCheckbox
+          isSelected={selected}
+          aria-label={`Select ${v.gene ?? 'variant'}`}
+          onChange={() => onToggle()}
+        />
       </td>
-      <td><strong>{v.gene}</strong></td>
-      <td className={styles.mono}><code>{v.hgvsc ?? `${v.chrom}:${v.pos}`}</code></td>
-      <td className={styles.mono}>{v.hgvsp ? <code>{v.hgvsp}</code> : <span className={styles.muted}>—</span>}</td>
-      <td className={styles.mono} style={{ fontSize: 11 }}>
+      <td className="whitespace-nowrap px-2.5 py-1"><strong>{v.gene}</strong></td>
+      <td className="whitespace-nowrap px-2.5 py-1 font-mono"><code>{v.hgvsc ?? `${v.chrom}:${v.pos}`}</code></td>
+      <td className="whitespace-nowrap px-2.5 py-1 font-mono">{v.hgvsp ? <code>{v.hgvsp}</code> : <span className="text-muted">—</span>}</td>
+      <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">
         <code>{v.clinical_nm ?? (v.transcript ? v.transcript.substring(0, 20) : '—')}</code>
       </td>
-      <td className={`${styles.muted} ${styles.effectCell}`} title={v.effect ?? ''}>
+      <td className="max-w-[180px] truncate px-2.5 py-1 text-muted" title={v.effect ?? ''}>
         {v.effect ? v.effect.replace(/_variant/g, '').replace(/_/g, ' ').substring(0, 30) : '—'}
       </td>
-      <td>
+      <td className="whitespace-nowrap px-2.5 py-1">
         {v.zygosity
-          ? <span className={styles.zyg}>{v.zygosity}</span>
-          : <span className={styles.muted}>—</span>
+          ? <span className="text-[11px] font-semibold">{v.zygosity}</span>
+          : <span className="text-muted">—</span>
         }
       </td>
-      <td className={styles.mono} style={{ fontSize: 11 }}>{allelDepth(v)}</td>
-      <td className={styles.mono} style={{ fontSize: 11 }}>{fmtAf(v.gnomad_af)}</td>
-      <td>
+      <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">{allelDepth(v)}</td>
+      <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">{fmtAf(v.gnomad_af)}</td>
+      <td className="whitespace-nowrap px-2.5 py-1">
         {cvLabel
-          ? <Badge variant={clinvarVariant(cvLabel)} className={styles.badgeSm}>{cvLabel}</Badge>
-          : <span className={styles.muted}>—</span>
+          ? (
+            <Chip color={clinvarColor(cvLabel)} size="sm" variant="soft">
+              <Chip.Label>{cvLabel}</Chip.Label>
+            </Chip>
+          )
+          : <span className="text-muted">—</span>
         }
       </td>
-      <td>
+      <td className="whitespace-nowrap px-2.5 py-1">
         {v.acmg_classification
           ? (
-            <Badge variant={ACMG_VARIANT[v.acmg_classification] ?? 'default'} className={styles.badgeSm}>
-              {v.acmg_classification.replace(/_/g, ' ')}
-            </Badge>
+            <Chip color={ACMG_COLOR[v.acmg_classification] ?? 'default'} size="sm" variant="soft">
+              <Chip.Label>{v.acmg_classification.replace(/_/g, ' ')}</Chip.Label>
+            </Chip>
           )
-          : <span className={styles.muted}>—</span>
+          : <span className="text-muted">—</span>
         }
       </td>
-      <td>
+      <td className="whitespace-nowrap px-2.5 py-1">
         {v.tags && v.tags.length > 0
-          ? <span className={styles.tags}>{v.tags.join(', ')}</span>
-          : <span className={styles.muted}>—</span>
+          ? <span className="text-[11px] text-muted">{v.tags.join(', ')}</span>
+          : <span className="text-muted">—</span>
         }
       </td>
-      <td className={styles.diseaseCell} title={v.diseases?.join('; ') ?? v.disease ?? ''}>
+      <td className="max-w-[180px] truncate px-2.5 py-1 text-[11px] text-muted" title={v.diseases?.join('; ') ?? v.disease ?? ''}>
         {diseasesLabel(v)}
       </td>
-      <td>
-        <div className={styles.rowActions}>
-          <button type="button" className={styles.detailBtn} onClick={onDetail} title="Show detail">
-            {expanded ? '▲' : '▼'}
-          </button>
-          <select
-            value={comment?.classification ?? ''}
-            onChange={(e) => onCommentChange({ classification: (e.target.value || undefined) as AcmgClass })}
-            className={styles.overrideSelect}
-            title="Override ACMG classification"
+      <td className="whitespace-nowrap px-2.5 py-1">
+        <div className="flex items-center gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="secondary"
+            isIconOnly
+            onPress={onDetail}
+            aria-label={expanded ? 'Hide detail' : 'Show detail'}
           >
-            <option value="">— auto —</option>
-            {ACMG_CLASSES.map((c) => (
-              <option key={c} value={c}>{c.replace(/_/g, ' ')}</option>
-            ))}
-          </select>
+            {expanded
+              ? <ChevronUp size={14} strokeWidth={2} aria-hidden />
+              : <ChevronDown size={14} strokeWidth={2} aria-hidden />}
+          </Button>
+          <FilterSelect
+            value={comment?.classification ?? ''}
+            onChange={(val) => onCommentChange({ classification: (val || undefined) as AcmgClass })}
+            options={overrideOptions}
+            ariaLabel="Override ACMG classification"
+            className="max-w-[110px]"
+          />
         </div>
       </td>
     </tr>

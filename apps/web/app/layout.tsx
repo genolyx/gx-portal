@@ -1,5 +1,6 @@
 import type { Metadata } from 'next';
 import localFont from 'next/font/local';
+import { Providers } from './providers';
 import './globals.css';
 
 export const metadata: Metadata = {
@@ -24,23 +25,32 @@ const wantedSans = localFont({
 const themeInitScript = `
 try {
   var theme = localStorage.getItem('gx-portal-theme');
-  document.documentElement.setAttribute('data-theme', theme === 'light' ? 'light' : 'dark');
+  if (theme === 'light') {
+    document.documentElement.classList.remove('dark');
+    document.documentElement.classList.add('light');
+  } else {
+    document.documentElement.classList.remove('light');
+    document.documentElement.classList.add('dark');
+  }
   var fs = localStorage.getItem('gx-portal-font-size');
-  document.documentElement.setAttribute('data-font-size', (fs === 'md' || fs === 'lg') ? fs : 'sm');
+  document.documentElement.setAttribute(
+    'data-font-size',
+    (fs === 'sm' || fs === 'lg') ? fs : 'md'
+  );
 } catch (e) {
-  document.documentElement.setAttribute('data-theme', 'dark');
-  document.documentElement.setAttribute('data-font-size', 'sm');
+  document.documentElement.classList.add('dark');
+  document.documentElement.setAttribute('data-font-size', 'md');
 }
 `;
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="ko" className={wantedSans.variable} suppressHydrationWarning>
+    <html lang="en" className={wantedSans.variable} suppressHydrationWarning>
       <head>
         <script dangerouslySetInnerHTML={{ __html: themeInitScript }} />
       </head>
       <body className={wantedSans.className} suppressHydrationWarning>
-        {children}
+        <Providers>{children}</Providers>
       </body>
     </html>
   );

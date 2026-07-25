@@ -1,30 +1,38 @@
-import Link from 'next/link';
-import { cn } from '../../lib/utils';
+'use client';
+
+import { useRouter } from 'next/navigation';
+import { ArrowLeft } from 'lucide-react';
+import { Button } from '@heroui/react';
 
 interface PageHeaderProps {
   title: string;
   description?: string;
   backHref?: string;
-  action?: React.ReactNode;
-  className?: string;
+  actions?: React.ReactNode;
 }
 
-export function PageHeader({ title, description, backHref, action, className }: PageHeaderProps) {
+export function PageHeader({ title, description, backHref, actions }: PageHeaderProps) {
+  const router = useRouter();
+
   return (
-    <div className={cn('flex items-start justify-between mb-7', className)}>
-      <div>
+    <div className="mb-6 flex flex-wrap items-start justify-between gap-4">
+      <div className="flex flex-col gap-2">
         {backHref && (
-          <Link
-            href={backHref}
-            className="inline-block text-xs text-gx-text-2 hover:text-gx-text mb-1.5 transition-colors"
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="w-fit gap-1.5 px-2"
+            onPress={() => router.push(backHref)}
           >
-            ← Go back
-          </Link>
+            <ArrowLeft size={14} strokeWidth={2} aria-hidden />
+            Back
+          </Button>
         )}
-        <h1 className="text-2xl font-bold text-gx-text leading-tight">{title}</h1>
-        {description && <p className="text-sm text-gx-text-2 mt-0.5">{description}</p>}
+        <h1 className="text-2xl font-bold tracking-tight">{title}</h1>
+        {description && <p className="text-base text-muted opacity-90">{description}</p>}
       </div>
-      {action && <div className="flex-shrink-0">{action}</div>}
+      {actions && <div className="flex flex-wrap items-center gap-2">{actions}</div>}
     </div>
   );
 }

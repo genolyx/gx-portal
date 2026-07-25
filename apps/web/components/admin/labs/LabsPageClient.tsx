@@ -2,24 +2,30 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button, Chip, Link, Table } from '@heroui/react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { labsApi } from '../../../lib/api/admin';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { Badge } from '../../ui/Badge';
+import { CreateLabModal } from './CreateLabModal';
 import type { Lab } from '@gx-portal/types';
-import styles from '../Admin.module.css';
 
 export function LabsPageClient() {
   const router = useRouter();
   const [labs, setLabs] = useState<Lab[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = async () => {
-    try { setLabs(await labsApi.list()); }
-    finally { setLoading(false); }
+    try {
+      setLabs(await labsApi.list());
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleDelete = async (id: number, name: string) => {
     if (!confirm(`Delete lab "${name}"?`)) return;
@@ -32,65 +38,100 @@ export function LabsPageClient() {
       <PageHeader
         title="Labs"
         description="Manage sequencing labs and their client associations."
-        action={
-          <Button variant="primary" onClick={() => router.push('/admin/labs/new')}>
+        actions={
+          <Button variant="primary" onPress={() => setShowCreate(true)}>
             + New Lab
           </Button>
         }
       />
 
+      {showCreate && (
+        <CreateLabModal
+          onClose={() => setShowCreate(false)}
+          onSaved={() => void load()}
+        />
+      )}
+
       {loading ? (
-        <p className={styles.empty}>Loading…</p>
+        <p className="py-8 text-center text-muted">Loading…</p>
       ) : labs.length === 0 ? (
-        <p className={styles.empty}>No labs yet.</p>
+        <p className="py-8 text-center text-muted">No labs yet.</p>
       ) : (
-        <div className={styles.tableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>Lab Name</th>
-                <th>Client</th>
-                <th>Services</th>
-                <th>Email</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {labs.map((l) => (
-                <tr key={l.id}>
-                  <td>
-                    <button className={styles.linkBtn} onClick={() => router.push(`/admin/labs/${l.id}`)}>
-                      {l.name}
-                    </button>
-                  </td>
-                  <td>
-                    {l.client_name ? (
-                      <Badge variant="accent">{l.client_name}</Badge>
-                    ) : (
-                      <span className={styles.muted}>—</span>
-                    )}
-                  </td>
-                  <td>
-                    {l.service_codes.length === 0 ? (
-                      <span className={styles.muted}>All</span>
-                    ) : (
-                      l.service_codes.map((s) => (
-                        <Badge key={s} variant="default" className={styles.serviceTag}>{s}</Badge>
-                      ))
-                    )}
-                  </td>
-                  <td className={styles.muted}>{l.email ?? '—'}</td>
-                  <td className={styles.muted}>{l.created_at.slice(0, 10)}</td>
-                  <td>
-                    <Button size="sm" variant="ghost" onClick={() => router.push(`/admin/labs/${l.id}`)}>Edit</Button>
-                    <Button size="sm" variant="danger" onClick={() => handleDelete(l.id, l.name)}>Delete</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <Table.ScrollContainer>
+            <Table.Content aria-label="Labs">
+              <Table.Header>
+                <Table.Column isRowHeader>Lab Name</Table.Column>
+                <Table.Column>Client</Table.Column>
+                <Table.Column>Services</Table.Column>
+                <Table.Column>Email</Table.Column>
+                <Table.Column>Created</Table.Column>
+                <Table.Column>Actions</Table.Column>
+              </Table.Header>
+              <Table.Body>
+                {labs.map((l) => (
+                  <Table.Row key={l.id}>
+                    <Table.Cell>
+                      <Link href={`/admin/labs/${l.id}`} className="text-sm font-medium">
+                        {l.name}
+                      </Link>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {l.client_name ? (
+                        <Chip color="accent" size="sm" variant="soft">
+                          <Chip.Label>{l.client_name}</Chip.Label>
+                        </Chip>
+                      ) : (
+                        <span className="text-sm text-muted">—</span>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      {l.service_codes.length === 0 ? (
+                        <span className="text-sm text-muted">All</span>
+                      ) : (
+                        <div className="flex flex-wrap gap-1">
+                          {l.service_codes.map((s) => (
+                            <Chip key={s} size="sm" variant="soft">
+                              <Chip.Label>{s}</Chip.Label>
+                            </Chip>
+                          ))}
+                        </div>
+                      )}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted">{l.email ?? '—'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted">{l.created_at.slice(0, 10)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          aria-label={`Edit ${l.name}`}
+                          onPress={() => router.push(`/admin/labs/${l.id}`)}
+                        >
+                          <Pencil size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          isIconOnly
+                          aria-label={`Delete ${l.name}`}
+                          onPress={() => handleDelete(l.id, l.name)}
+                        >
+                          <Trash2 size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
       )}
     </div>
   );

@@ -3,10 +3,14 @@
 import { useEffect, useState, useCallback, useRef } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
+import { Button, Card, Chip, Dropdown, Input, Label, Switch } from '@heroui/react';
 import { ordersApi } from '../../../lib/api/orders';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { OrderStatusBadge } from '../../ui/Badge';
+import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
+import { DatePickerField } from '../../ui/DatePickerField';
+import { SelectField } from '../../ui/SelectField';
+import { RefreshButton } from '../../ui/RefreshButton';
+import { CreateOrderModal } from '../CreateOrder/CreateOrderModal';
 import { ReportDownloadLink } from '../ReportDownloadLink';
 import { reportLangLabel } from '../../../lib/report-downloads';
 import type { Order } from '@gx-portal/types';
@@ -169,19 +173,11 @@ function exportTsv(orders: Order[]) {
 
 // ─── UI helpers ───────────────────────────────────────────────────────────────
 
-const selectCls =
-  'bg-gx-elevated border border-gx-border rounded-gx-sm px-3 py-[7px] text-sm text-gx-text ' +
-  'outline-none focus:border-gx-accent w-full';
-
-const inputCls =
-  'bg-gx-elevated border border-gx-border rounded-gx-sm px-3 py-[7px] text-sm text-gx-text ' +
-  'outline-none focus:border-gx-accent w-full placeholder:text-gx-muted';
-
-function FieldLabel({ children }: { children: React.ReactNode }) {
+function FieldLabel({ children, htmlFor }: { children: React.ReactNode; htmlFor?: string }) {
   return (
-    <label className="block text-[11px] font-semibold text-gx-text-2 mb-1 uppercase tracking-wide">
+    <Label htmlFor={htmlFor} className="block text-[11px] font-semibold text-muted mb-1 uppercase tracking-wide">
       {children}
-    </label>
+    </Label>
   );
 }
 
@@ -192,131 +188,135 @@ interface SearchPanelProps {
   setPending: React.Dispatch<React.SetStateAction<FilterState>>;
   onApply: () => void;
   onExport: () => void;
-  onRefresh: () => void;
+  onRefresh: () => void | Promise<void>;
+  refreshing?: boolean;
   resultCount: number;
 }
 
-function SearchPanel({ pending, setPending, onApply, onExport, onRefresh, resultCount }: SearchPanelProps) {
+function SearchPanel({ pending, setPending, onApply, onExport, onRefresh, refreshing, resultCount }: SearchPanelProps) {
   const set = <K extends keyof FilterState>(k: K, v: FilterState[K]) =>
     setPending(prev => ({ ...prev, [k]: v }));
 
   const hasActive = pending.text || pending.dateFrom || pending.dateTo || pending.service || pending.status;
 
   return (
-    <div className="rounded-gx border border-gx-border bg-gx-surface mb-4 overflow-hidden">
+    <Card className="mb-4 overflow-hidden">
+      <Card.Content className="p-0">
       {/* Row 1 — text search + date range + option toggle */}
       <div className="flex flex-wrap items-end gap-3 px-4 pt-4 pb-3">
         {/* Text search */}
         <div className="flex-1 min-w-[260px]">
-          <FieldLabel>Search across text fields</FieldLabel>
-          <input
+          <FieldLabel htmlFor="orders-search">Search across text fields</FieldLabel>
+          <Input
+            id="orders-search"
             type="text"
-            className={inputCls}
             placeholder="e.g. order-id, sample, labcode, message, COMPLETED…"
             value={pending.text}
             onChange={e => set('text', e.target.value)}
             onKeyDown={e => e.key === 'Enter' && onApply()}
+            fullWidth
           />
         </div>
 
         {/* Date from */}
-        <div className="w-44">
+        <div className="w-52">
           <FieldLabel>Order created from</FieldLabel>
-          <input
-            type="date"
-            className={inputCls}
+          <DatePickerField
+            aria-label="Order created from"
             value={pending.dateFrom}
-            onChange={e => set('dateFrom', e.target.value)}
+            onChange={(v) => set('dateFrom', v)}
           />
         </div>
 
         {/* Date to */}
-        <div className="w-44">
+        <div className="w-52">
           <FieldLabel>Order created to</FieldLabel>
-          <input
-            type="date"
-            className={inputCls}
+          <DatePickerField
+            aria-label="Order created to"
             value={pending.dateTo}
-            onChange={e => set('dateTo', e.target.value)}
+            onChange={(v) => set('dateTo', v)}
           />
         </div>
 
         {/* Deep-search toggle */}
-        <div className="flex flex-col items-end gap-1 self-end pb-[1px]">
-          <span className="text-[11px] font-semibold text-gx-text-2 uppercase tracking-wide">
+        <div className="flex flex-col items-end gap-1.5 self-end pb-[1px]">
+          <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
             Deep Search
           </span>
-          <button
-            type="button"
-            onClick={() => set('deepSearch', !pending.deepSearch)}
-            className={cn(
-              'flex items-center gap-1.5 px-2.5 py-1.5 rounded-gx-sm border text-xs font-bold transition-colors',
-              pending.deepSearch
-                ? 'bg-gx-accent text-white border-gx-accent'
-                : 'bg-gx-elevated text-gx-muted border-gx-border hover:border-gx-accent',
-            )}
+          <Switch
+            isSelected={pending.deepSearch}
+            onChange={(v) => set('deepSearch', v)}
+            size="sm"
+            className="!flex-row !items-center !gap-2"
           >
-            <span className={cn(
-              'w-7 h-3.5 rounded-full relative transition-colors',
-              pending.deepSearch ? 'bg-white/30' : 'bg-gx-muted/30',
-            )}>
-              <span className={cn(
-                'absolute top-0.5 w-2.5 h-2.5 rounded-full transition-all',
-                pending.deepSearch ? 'left-[14px] bg-white' : 'left-0.5 bg-gx-muted',
-              )} />
-            </span>
-            {pending.deepSearch ? 'ON' : 'OFF'}
-          </button>
+            <Switch.Content className="!flex-row !items-center !gap-2">
+              <span className="text-xs text-muted tabular-nums w-7 text-right">
+                {pending.deepSearch ? 'ON' : 'OFF'}
+              </span>
+              <Switch.Control>
+                <Switch.Thumb />
+              </Switch.Control>
+            </Switch.Content>
+          </Switch>
         </div>
       </div>
 
       {/* Divider */}
-      <div className="h-px bg-gx-border mx-4" />
+      <div className="h-px bg-border mx-4" />
 
       {/* Row 2 — service + status dropdowns */}
       <div className="flex flex-wrap items-end gap-3 px-4 py-3">
         <div className="w-48">
           <FieldLabel>All Services</FieldLabel>
-          <select className={selectCls} value={pending.service} onChange={e => set('service', e.target.value)}>
-            {SERVICES.map(({ value, label }) => (
-              <option key={value} value={value}>{label}</option>
-            ))}
-          </select>
+          <SelectField
+            aria-label="Service filter"
+            value={pending.service}
+            onChange={(v) => set('service', v)}
+            options={SERVICES.map(({ value, label }) => ({ id: value, label }))}
+          />
         </div>
 
         <div className="w-44">
           <FieldLabel>All Status</FieldLabel>
-          <select className={selectCls} value={pending.status} onChange={e => set('status', e.target.value)}>
-            {STATUSES.map(s => <option key={s} value={s}>{s || 'All Status'}</option>)}
-          </select>
+          <SelectField
+            aria-label="Status filter"
+            value={pending.status}
+            onChange={(v) => set('status', v)}
+            options={STATUSES.map((s) => ({ id: s, label: s || 'All Status' }))}
+          />
         </div>
 
         {/* Buttons */}
         <div className="flex items-center gap-2 ml-auto mt-4">
           {hasActive && (
-            <button
-              type="button"
-              className="text-xs text-gx-muted hover:text-gx-text underline underline-offset-2 transition-colors"
-              onClick={() => setPending(EMPTY_FILTER)}
+            <Button
+              variant="ghost"
+              size="sm"
+              onPress={() => setPending(EMPTY_FILTER)}
             >
               Clear
-            </button>
+            </Button>
           )}
-          <Button variant="primary" size="sm" onClick={onApply}>
+          <Button variant="primary" size="sm" onPress={onApply}>
             Apply filters
           </Button>
-          <Button variant="secondary" size="sm" onClick={onExport}>
+          <Button variant="secondary" size="sm" onPress={onExport}>
             Export as TSV
           </Button>
-          <Button variant="ghost" size="sm" onClick={onRefresh}>
-            ↺ Refresh
-          </Button>
-          <span className="text-xs text-gx-muted pl-1">
+          <RefreshButton
+            variant="ghost"
+            label="Refresh"
+            successToast="Orders refreshed"
+            isLoading={refreshing}
+            onPress={onRefresh}
+          />
+          <span className="text-xs text-muted pl-1">
             {resultCount} result{resultCount !== 1 ? 's' : ''}
           </span>
         </div>
       </div>
-    </div>
+      </Card.Content>
+    </Card>
   );
 }
 
@@ -332,15 +332,15 @@ function SortableHead({
   return (
     <th
       className={cn(
-        'px-3 py-2.5 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide',
-        'cursor-pointer select-none whitespace-nowrap hover:text-gx-text border-b border-gx-border',
+        'px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wide',
+        'cursor-pointer select-none whitespace-nowrap hover:text-foreground border-b border-border',
         className,
       )}
       onClick={() => onSort(sortKey)}
     >
       <span className="inline-flex items-center gap-1">
         {label}
-        <span className={cn('text-[10px]', active ? 'text-gx-accent' : 'text-gx-muted')}>
+        <span className={cn('text-[10px]', active ? 'text-accent' : 'text-muted')}>
           {active ? (current.dir === 'asc' ? '▲' : '▼') : '⇅'}
         </span>
       </span>
@@ -352,13 +352,13 @@ function SortableHead({
 
 function ProgressBar({ value }: { value: number }) {
   const pct = Math.min(100, Math.max(0, value));
-  const color = pct === 100 ? 'bg-gx-success' : pct > 0 ? 'bg-gx-accent' : 'bg-gx-muted/30';
+  const color = pct === 100 ? 'bg-success' : pct > 0 ? 'bg-accent' : 'bg-muted/30';
   return (
     <div className="flex items-center gap-1.5">
-      <div className="h-1.5 w-20 rounded-full bg-gx-elevated overflow-hidden">
+      <div className="h-1.5 w-20 rounded-full bg-surface-secondary overflow-hidden">
         <div className={cn('h-full rounded-full transition-all', color)} style={{ width: `${pct}%` }} />
       </div>
-      <span className="text-[11px] text-gx-text-2 tabular-nums w-7 text-right">{pct}%</span>
+      <span className="text-[11px] text-muted tabular-nums w-7 text-right">{pct}%</span>
     </div>
   );
 }
@@ -366,23 +366,27 @@ function ProgressBar({ value }: { value: number }) {
 // ─── ServiceBadge ─────────────────────────────────────────────────────────────
 
 function ServiceBadge({ code }: { code: string }) {
-  const SERVICE_META: Record<string, { label: string; cls: string }> = {
-    carrier_screening: { label: 'Carrier Screening', cls: 'bg-purple-500/15 text-purple-400' },
-    carrier:           { label: 'Carrier Screening', cls: 'bg-purple-500/15 text-purple-400' },
-    carrier_couples:   { label: 'Carrier Screening', cls: 'bg-purple-500/15 text-purple-400' },
-    whole_exome:       { label: 'Whole Exome',        cls: 'bg-amber-500/15 text-amber-400'  },
-    wes_panel:         { label: 'Whole Exome',        cls: 'bg-amber-500/15 text-amber-400'  },
-    health_snp:        { label: 'Health Screening',   cls: 'bg-teal-500/15 text-teal-400'    },
-    sgnipt:            { label: 'Single-gene NIPT',   cls: 'bg-blue-500/15 text-blue-400'    },
-    nipt:              { label: 'NIPT',               cls: 'bg-blue-500/15 text-blue-400'    },
+  const SERVICE_META: Record<string, { label: string; color?: 'accent' | 'warning' | 'success' | 'default' }> = {
+    carrier_screening: { label: 'Carrier Screening', color: 'accent' },
+    carrier:           { label: 'Carrier Screening', color: 'accent' },
+    carrier_couples:   { label: 'Carrier Screening', color: 'accent' },
+    whole_exome:       { label: 'Whole Exome',        color: 'warning'  },
+    wes_panel:         { label: 'Whole Exome',        color: 'warning'  },
+    health_snp:        { label: 'Health Screening',   color: 'success'    },
+    sgnipt:            { label: 'Single-gene NIPT',   color: 'accent'    },
+    nipt:              { label: 'NIPT',               color: 'accent'    },
   };
   const meta = SERVICE_META[code.toLowerCase()];
-  const cls   = meta?.cls   ?? 'bg-gx-elevated text-gx-text-2';
   const label = meta?.label ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
   return (
-    <span className={cn('inline-flex items-center rounded-gx-sm px-2 py-0.5 text-xs font-semibold whitespace-nowrap', cls)}>
-      {label}
-    </span>
+    <Chip
+      color={meta?.color ?? 'default'}
+      size="sm"
+      variant="soft"
+      className="max-w-none whitespace-nowrap"
+    >
+      <Chip.Label className="whitespace-nowrap">{label}</Chip.Label>
+    </Chip>
   );
 }
 
@@ -404,12 +408,12 @@ function ReportFilesCell({ orderId, status }: { orderId: string; status: string 
       .finally(() => setLoading(false));
   }, [orderId, status]);
 
-  if (!['COMPLETED', 'REPORT_READY'].includes(status)) return <span className="text-gx-muted text-xs">—</span>;
-  if (loading) return <span className="text-gx-muted text-xs">…</span>;
+  if (!['COMPLETED', 'REPORT_READY'].includes(status)) return <span className="text-muted text-xs">—</span>;
+  if (loading) return <span className="text-muted text-xs">…</span>;
   if (!files) return null;
 
   const { pdfs, htmls } = getReportFiles(files);
-  if (pdfs.length === 0 && htmls.length === 0) return <span className="text-gx-muted text-xs">No report</span>;
+  if (pdfs.length === 0 && htmls.length === 0) return <span className="text-muted text-xs">No report</span>;
 
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -451,29 +455,18 @@ function ActionsMenu({
   onFollowUp: (order: Order) => void;
 }) {
   const router = useRouter();
-  const [open, setOpen] = useState(false);
   const [busy, setBusy] = useState(false);
-  const ref = useRef<HTMLDivElement>(null);
   const items = buildOrderMenuItems(order);
-
-  useEffect(() => {
-    const handler = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    document.addEventListener('mousedown', handler);
-    return () => document.removeEventListener('mousedown', handler);
-  }, []);
 
   const run = async (label: string, fn: () => Promise<unknown>) => {
     if (!confirm(`"${label}" 실행하시겠습니까?`)) return;
-    setBusy(true); setOpen(false);
+    setBusy(true);
     try { await fn(); onActionDone(); }
     catch (e) { alert(e instanceof Error ? e.message : String(e)); }
     finally { setBusy(false); }
   };
 
   const handleAction = async (action: OrderMenuAction) => {
-    setOpen(false);
     switch (action) {
       case 'edit':
         if (!canEditOrderService(order.service_code)) {
@@ -527,44 +520,32 @@ function ActionsMenu({
   };
 
   return (
-    <div className="relative" ref={ref}>
-      <button
-        className={cn(
-          'w-7 h-7 rounded flex items-center justify-center text-gx-text-2',
-          'hover:bg-gx-elevated hover:text-gx-text transition-colors text-base',
-          busy && 'opacity-50 pointer-events-none',
-        )}
-        onClick={e => { e.stopPropagation(); setOpen(v => !v); }}
-      >···</button>
-      {open && (
-        <div className="absolute right-0 z-50 mt-1 w-52 rounded-gx bg-gx-surface border border-gx-border shadow-gx-md py-1"
-          onClick={e => e.stopPropagation()}>
-          {items.map((item) => (
-            <MenuItem
-              key={item.action}
-              danger={item.danger}
-              title={item.title}
-              onClick={() => void handleAction(item.action)}
-            >
-              {item.label}
-            </MenuItem>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function MenuItem({ children, onClick, danger, title }: {
-  children: React.ReactNode; onClick: () => void; danger?: boolean; title?: string;
-}) {
-  return (
-    <button
-      title={title}
-      className={cn('w-full text-left px-3 py-1.5 text-xs transition-colors',
-        danger ? 'text-gx-danger hover:bg-gx-danger/10' : 'text-gx-text hover:bg-gx-elevated')}
-      onClick={onClick}
-    >{children}</button>
+    <span onClick={(e) => e.stopPropagation()} onKeyDown={(e) => e.stopPropagation()} role="presentation">
+      <Dropdown>
+        <Dropdown.Trigger>
+          <Button variant="ghost" size="sm" isDisabled={busy} aria-label="Order actions">
+            ···
+          </Button>
+        </Dropdown.Trigger>
+        <Dropdown.Popover>
+          <Dropdown.Menu
+            onAction={(key) => void handleAction(key as OrderMenuAction)}
+            aria-label="Order actions"
+          >
+            {items.map((item) => (
+              <Dropdown.Item
+                key={item.action}
+                id={item.action}
+                textValue={item.label}
+                className={item.danger ? 'text-danger' : undefined}
+              >
+                {item.label}
+              </Dropdown.Item>
+            ))}
+          </Dropdown.Menu>
+        </Dropdown.Popover>
+      </Dropdown>
+    </span>
   );
 }
 
@@ -574,6 +555,7 @@ export function OrdersPageClient() {
   const router = useRouter();
   const [orders, setOrders]   = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort]       = useState<SortState>({ key: 'created_at', dir: 'desc' });
   const [showCreate, setShowCreate] = useState(false);
   const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
@@ -582,18 +564,22 @@ export function OrdersPageClient() {
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTER);
   const [active,  setActive]  = useState<FilterState>(EMPTY_FILTER);
 
-  const load = useCallback(async () => {
+  const load = useCallback(async (manual = false) => {
+    if (manual) setRefreshing(true);
     try {
       const res = await ordersApi.list();
       setOrders(res.orders ?? []);
+    } catch (e) {
+      if (manual) throw e instanceof Error ? e : new Error('Failed to refresh orders');
     } finally {
       setLoading(false);
+      if (manual) setRefreshing(false);
     }
   }, []);
 
   useEffect(() => {
-    load();
-    const id = setInterval(load, 15_000);
+    void load(false);
+    const id = setInterval(() => void load(false), 15_000);
     return () => clearInterval(id);
   }, [load]);
 
@@ -610,8 +596,8 @@ export function OrdersPageClient() {
       <PageHeader
         title="Orders"
         description="Manage and monitor analysis orders."
-        action={
-          <Button variant="primary" onClick={() => setShowCreate(true)}>
+        actions={
+          <Button variant="primary" onPress={() => setShowCreate(true)}>
             + Create an order
           </Button>
         }
@@ -631,23 +617,24 @@ export function OrdersPageClient() {
         setPending={setPending}
         onApply={applyFilters}
         onExport={() => exportTsv(sorted)}
-        onRefresh={load}
+        onRefresh={() => load(true)}
+        refreshing={refreshing}
         resultCount={sorted.length}
       />
 
       {/* ── Instruction hint ── */}
-      <p className="text-[11px] text-gx-muted mb-3">
+      <p className="text-[11px] text-muted mb-3">
         Click a row to open detail. Report-ready orders show PDF / HTML buttons. Use ··· for Edit, Review, Force Run, Reprocess, Delete, and other actions.
       </p>
 
       {loading ? (
-        <p className="text-center text-gx-muted py-10">Loading…</p>
+        <p className="text-center text-muted py-10">Loading…</p>
       ) : sorted.length === 0 ? (
-        <p className="text-center text-gx-muted py-10">No orders match the current filters.</p>
+        <p className="text-center text-muted py-10">No orders match the current filters.</p>
       ) : (
-        <div className="overflow-x-auto rounded-gx border border-gx-border">
+        <div className="overflow-x-auto rounded-lg border border-border">
           <table className="w-full text-sm border-collapse">
-            <thead className="bg-gx-elevated/60">
+            <thead className="bg-surface-secondary/60">
               <tr>
                 <SortableHead label="Order ID"       sortKey="order_id"     current={sort} onSort={handleSort} />
                 <SortableHead label="Service"        sortKey="service_code" current={sort} onSort={handleSort} />
@@ -658,8 +645,8 @@ export function OrdersPageClient() {
                 <SortableHead label="Result Updated" sortKey="updated_at"   current={sort} onSort={handleSort} />
                 <SortableHead label="Completed"      sortKey="completed_at" current={sort} onSort={handleSort} />
                 <SortableHead label="Message"        sortKey="message"      current={sort} onSort={handleSort} />
-                <th className="px-3 py-2.5 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide border-b border-gx-border whitespace-nowrap">Report</th>
-                <th className="px-3 py-2.5 border-b border-gx-border w-8" />
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wide border-b border-border whitespace-nowrap">Report</th>
+                <th className="px-3 py-2.5 border-b border-border w-8" />
               </tr>
             </thead>
             <tbody>
@@ -668,55 +655,55 @@ export function OrdersPageClient() {
                   key={o.order_id}
                   className={cn(
                     'cursor-pointer transition-colors',
-                    idx % 2 === 0 ? 'bg-gx-bg' : 'bg-gx-surface',
-                    'hover:bg-gx-accent-dim',
+                    idx % 2 === 0 ? 'bg-background' : 'bg-surface',
+                    'hover:bg-surface-secondary',
                   )}
                   onClick={() => router.push(`/orders/${encodeURIComponent(o.order_id)}`)}
                 >
-                  <td className="px-3 py-2.5 border-b border-gx-border" onClick={(e) => e.stopPropagation()}>
+                  <td className="px-3 py-2.5 border-b border-border" onClick={(e) => e.stopPropagation()}>
                     <Link
                       href={`/orders/${encodeURIComponent(o.order_id)}`}
-                      className="font-mono text-xs text-gx-accent hover:underline"
+                      className="font-mono text-xs text-accent hover:underline"
                     >
                       {o.order_id}
                     </Link>
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border">
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
                     <ServiceBadge code={o.service_code} />
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border">
-                    <span className="text-xs text-gx-text-2">{getLabCode(o) || '—'}</span>
+                  <td className="px-3 py-2.5 border-b border-border">
+                    <span className="text-xs text-muted">{getLabCode(o) || '—'}</span>
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border whitespace-nowrap">
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
                     <OrderStatusBadge status={o.status} />
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border">
+                  <td className="px-3 py-2.5 border-b border-border">
                     <ProgressBar value={o.progress ?? 0} />
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border whitespace-nowrap">
-                    <span className="text-xs text-gx-text-2">{fmtDate(o.created_at)}</span>
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
+                    <span className="text-xs text-muted">{fmtDate(o.created_at)}</span>
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border whitespace-nowrap">
-                    <span className="text-xs text-gx-text-2">{fmtDate(o.updated_at)}</span>
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
+                    <span className="text-xs text-muted">{fmtDate(o.updated_at)}</span>
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border whitespace-nowrap">
-                    <span className="text-xs text-gx-text-2">{fmtDate(o.completed_at)}</span>
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
+                    <span className="text-xs text-muted">{fmtDate(o.completed_at)}</span>
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border max-w-[180px]">
+                  <td className="px-3 py-2.5 border-b border-border max-w-[180px]">
                     {o.message ? (
                       <span
                         title={o.message}
                         className={cn('text-xs',
-                          /fail|error/i.test(o.message) ? 'text-gx-danger' : 'text-gx-text-2')}
+                          /fail|error/i.test(o.message) ? 'text-danger' : 'text-muted')}
                       >
                         {o.message.length > 36 ? o.message.slice(0, 33) + '…' : o.message}
                       </span>
-                    ) : <span className="text-gx-muted text-xs">—</span>}
+                    ) : <span className="text-muted text-xs">—</span>}
                   </td>
-                  <td className="px-3 py-2.5 border-b border-gx-border">
+                  <td className="px-3 py-2.5 border-b border-border">
                     <ReportFilesCell orderId={o.order_id} status={o.status} />
                   </td>
-                  <td className="px-2 py-2.5 border-b border-gx-border">
+                  <td className="px-2 py-2.5 border-b border-border">
                     <ActionsMenu
                       order={o}
                       onActionDone={load}

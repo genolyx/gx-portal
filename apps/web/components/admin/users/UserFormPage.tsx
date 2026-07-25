@@ -2,12 +2,18 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  ListBox,
+  Select,
+  Switch,
+} from '@heroui/react';
 import { usersApi, clientsApi, labsApi } from '../../../lib/api/admin';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { Toggle } from '../../ui/Toggle';
-import type { UserProfile, CreateUserDto, UpdateUserDto, Client, Lab } from '@gx-portal/types';
-import styles from '../Admin.module.css';
+import type { UserProfile, UpdateUserDto, Client, Lab } from '@gx-portal/types';
 
 type Role = 'admin' | 'client' | 'lab';
 
@@ -24,26 +30,32 @@ interface FormState {
 }
 
 export function UserFormPage({ id }: { id: string }) {
-  const isNew = id === 'new';
   const router = useRouter();
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [clients, setClients] = useState<Client[]>([]);
   const [labs, setLabs] = useState<Lab[]>([]);
 
   const [form, setForm] = useState<FormState>({
-    username: '', first_name: '', last_name: '', email: '',
-    role: 'client', client_id: undefined, lab_id: undefined,
-    password: '', email_notification: false,
+    username: '',
+    first_name: '',
+    last_name: '',
+    email: '',
+    role: 'client',
+    client_id: undefined,
+    lab_id: undefined,
+    password: '',
+    email_notification: false,
   });
 
   useEffect(() => {
     clientsApi.list().then(setClients).catch(() => {});
     labsApi.list().then(setLabs).catch(() => {});
 
-    if (!isNew) {
-      usersApi.getById(Number(id)).then((u: UserProfile) => {
+    usersApi
+      .getById(Number(id))
+      .then((u: UserProfile) => {
         setForm({
           username: u.username,
           first_name: u.first_name ?? '',
@@ -55,164 +67,230 @@ export function UserFormPage({ id }: { id: string }) {
           password: '',
           email_notification: u.email_notification,
         });
-      }).catch(() => router.push('/admin/users'))
-        .finally(() => setLoading(false));
-    }
-  }, [id, isNew, router]);
+      })
+      .catch(() => router.push('/admin/users'))
+      .finally(() => setLoading(false));
+  }, [id, router]);
 
   const set = <K extends keyof FormState>(k: K, v: FormState[K]) =>
     setForm((p) => ({ ...p, [k]: v }));
 
-  // When role changes, clear other affiliation
   const setRole = (role: Role) => {
     setForm((p) => ({ ...p, role, client_id: undefined, lab_id: undefined }));
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault(); setError(''); setSaving(true);
+    e.preventDefault();
+    setError('');
+    setSaving(true);
     try {
-      if (isNew) {
-        const dto: CreateUserDto = {
-          username: form.username,
-          password: form.password,
-          first_name: form.first_name || undefined,
-          last_name: form.last_name || undefined,
-          email: form.email || undefined,
-          role: form.role,
-          client_id: form.role === 'client' ? form.client_id : undefined,
-          lab_id: form.role === 'lab' ? form.lab_id : undefined,
-          email_notification: form.email_notification,
-        };
-        await usersApi.create(dto);
-      } else {
-        const dto: UpdateUserDto = {
-          first_name: form.first_name || undefined,
-          last_name: form.last_name || undefined,
-          email: form.email || undefined,
-          role: form.role,
-          client_id: form.role === 'client' ? form.client_id : undefined,
-          lab_id: form.role === 'lab' ? form.lab_id : undefined,
-          email_notification: form.email_notification,
-          password: form.password || undefined,
-        };
-        await usersApi.update(Number(id), dto);
-      }
+      const dto: UpdateUserDto = {
+        first_name: form.first_name || undefined,
+        last_name: form.last_name || undefined,
+        email: form.email || undefined,
+        role: form.role,
+        client_id: form.role === 'client' ? form.client_id : undefined,
+        lab_id: form.role === 'lab' ? form.lab_id : undefined,
+        email_notification: form.email_notification,
+        password: form.password || undefined,
+      };
+      await usersApi.update(Number(id), dto);
       router.push('/admin/users');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
-    } finally { setSaving(false); }
+    } finally {
+      setSaving(false);
+    }
   };
 
-  if (loading) return <p className={styles.empty}>Loading…</p>;
+  if (loading) return <p className="py-8 text-center text-muted">Loading…</p>;
 
   return (
     <div>
       <PageHeader
-        title={isNew ? 'Create User' : 'Update User'}
-        description={isNew ? 'Create a new user.' : `Update user "${form.username}"`}
+        title="Update User"
+        description={`Update user "${form.username}"`}
         backHref="/admin/users"
       />
 
-      <form onSubmit={handleSubmit} className={styles.form}>
-        <div className={styles.formGrid}>
-          <div className={`${styles.field} ${styles.full}`}>
-            <label className={styles.label}>Username <span className={styles.req}>*</span></label>
-            <input
-              value={form.username}
-              onChange={(e) => set('username', e.target.value)}
-              required
-              disabled={!isNew}
-              className={styles.input}
-            />
-          </div>
+      <Card className="max-w-2xl">
+        <Card.Content>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="col-span-full flex flex-col gap-1.5">
+                <Label>
+                  Username <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.username}
+                  onChange={(e) => set('username', e.target.value)}
+                  required
+                  disabled
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>First Name <span className={styles.req}>*</span></label>
-            <input value={form.first_name} onChange={(e) => set('first_name', e.target.value)} className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  First Name <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.first_name}
+                  onChange={(e) => set('first_name', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Last Name <span className={styles.req}>*</span></label>
-            <input value={form.last_name} onChange={(e) => set('last_name', e.target.value)} className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Last Name <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.last_name}
+                  onChange={(e) => set('last_name', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={`${styles.field} ${styles.full}`}>
-            <label className={styles.label}>Email <span className={styles.req}>*</span></label>
-            <input type="email" value={form.email} onChange={(e) => set('email', e.target.value)} className={styles.input} />
-          </div>
+              <div className="col-span-full flex flex-col gap-1.5">
+                <Label>
+                  Email <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  type="email"
+                  value={form.email}
+                  onChange={(e) => set('email', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Role <span className={styles.req}>*</span></label>
-            <select value={form.role} onChange={(e) => setRole(e.target.value as Role)} className={styles.input}>
-              <option value="admin">Administrator</option>
-              <option value="client">Client</option>
-              <option value="lab">Lab</option>
-            </select>
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Role <span className="text-danger">*</span>
+                </Label>
+                <Select
+                  selectedKey={form.role}
+                  onSelectionChange={(key) => setRole(key as Role)}
+                  fullWidth
+                >
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBox.Item id="admin" textValue="Administrator">
+                        Administrator
+                      </ListBox.Item>
+                      <ListBox.Item id="client" textValue="Client">
+                        Client
+                      </ListBox.Item>
+                      <ListBox.Item id="lab" textValue="Lab">
+                        Lab
+                      </ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
 
-          {/* Conditional: client or lab selector */}
-          {form.role === 'client' && (
-            <div className={styles.field}>
-              <label className={styles.label}>Client <span className={styles.req}>*</span></label>
-              <select
-                value={form.client_id ?? ''}
-                onChange={(e) => set('client_id', e.target.value ? Number(e.target.value) : undefined)}
-                className={styles.input}
-              >
-                <option value="">— Select Client —</option>
-                {clients.map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
-              </select>
+              {form.role === 'client' && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>
+                    Client <span className="text-danger">*</span>
+                  </Label>
+                  <Select
+                    selectedKey={form.client_id != null ? String(form.client_id) : null}
+                    onSelectionChange={(key) =>
+                      set('client_id', key ? Number(key) : undefined)
+                    }
+                    fullWidth
+                  >
+                    <Select.Trigger>
+                      <Select.Value />
+                      <Select.Indicator />
+                    </Select.Trigger>
+                    <Select.Popover>
+                      <ListBox>
+                        {clients.map((c) => (
+                          <ListBox.Item key={c.id} id={String(c.id)} textValue={c.name}>
+                            {c.name}
+                          </ListBox.Item>
+                        ))}
+                      </ListBox>
+                    </Select.Popover>
+                  </Select>
+                </div>
+              )}
+
+              {form.role === 'lab' && (
+                <div className="flex flex-col gap-1.5">
+                  <Label>
+                    Lab <span className="text-danger">*</span>
+                  </Label>
+                  <Select
+                    selectedKey={form.lab_id != null ? String(form.lab_id) : null}
+                    onSelectionChange={(key) => set('lab_id', key ? Number(key) : undefined)}
+                    fullWidth
+                  >
+                    <Select.Trigger>
+                      <Select.Value />
+                      <Select.Indicator />
+                    </Select.Trigger>
+                    <Select.Popover>
+                      <ListBox>
+                        {labs.map((l) => (
+                          <ListBox.Item
+                            key={l.id}
+                            id={String(l.id)}
+                            textValue={l.client_name ? `${l.name} (${l.client_name})` : l.name}
+                          >
+                            {l.name}
+                            {l.client_name ? ` (${l.client_name})` : ''}
+                          </ListBox.Item>
+                        ))}
+                      </ListBox>
+                    </Select.Popover>
+                  </Select>
+                </div>
+              )}
+
+              <div className="flex flex-col gap-1.5">
+                <Label>Password</Label>
+                <Input
+                  type="password"
+                  value={form.password}
+                  onChange={(e) => set('password', e.target.value)}
+                  placeholder="Leave blank to keep current"
+                  fullWidth
+                />
+              </div>
             </div>
-          )}
 
-          {form.role === 'lab' && (
-            <div className={styles.field}>
-              <label className={styles.label}>Lab <span className={styles.req}>*</span></label>
-              <select
-                value={form.lab_id ?? ''}
-                onChange={(e) => set('lab_id', e.target.value ? Number(e.target.value) : undefined)}
-                className={styles.input}
-              >
-                <option value="">— Select Lab —</option>
-                {labs.map((l) => (
-                  <option key={l.id} value={l.id}>
-                    {l.name}{l.client_name ? ` (${l.client_name})` : ''}
-                  </option>
-                ))}
-              </select>
+            <Switch
+              isSelected={form.email_notification}
+              onChange={(v) => set('email_notification', v)}
+            >
+              <Switch.Content>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+                Email Notification
+              </Switch.Content>
+            </Switch>
+
+            {error && <p className="text-sm text-danger">{error}</p>}
+
+            <div className="flex gap-2">
+              <Button type="submit" variant="primary" isDisabled={saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </Button>
+              <Button type="button" variant="ghost" onPress={() => router.push('/admin/users')}>
+                Cancel
+              </Button>
             </div>
-          )}
-
-          <div className={styles.field}>
-            <label className={styles.label}>Password {isNew && <span className={styles.req}>*</span>}</label>
-            <input
-              type="password"
-              value={form.password}
-              onChange={(e) => set('password', e.target.value)}
-              required={isNew}
-              placeholder={isNew ? '' : 'Leave blank to keep current'}
-              className={styles.input}
-            />
-          </div>
-        </div>
-
-        <div className={styles.toggleRow}>
-          <Toggle
-            label="Email Notification"
-            checked={form.email_notification}
-            onChange={(v) => set('email_notification', v)}
-            required
-          />
-        </div>
-
-        {error && <p className={styles.error}>{error}</p>}
-        <div className={styles.actions}>
-          <Button type="submit" variant="primary" loading={saving}>
-            {isNew ? 'Create User' : 'Save Changes'}
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => router.push('/admin/users')}>Cancel</Button>
-        </div>
-      </form>
+          </form>
+        </Card.Content>
+      </Card>
     </div>
   );
 }

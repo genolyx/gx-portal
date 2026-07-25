@@ -2,10 +2,8 @@
 
 import { useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
+import { Alert, Button, Card, Form, Input, Label } from '@heroui/react';
 import { authApi } from '../../../lib/api/auth';
-import { Input } from '../../../components/ui/Input';
-import { Label } from '../../../components/ui/Label';
-import { Button } from '../../../components/ui/Button';
 
 export default function LoginPage() {
   const router = useRouter();
@@ -29,58 +27,63 @@ export default function LoginPage() {
   };
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gx-bg">
-      <div className="w-[360px] bg-gx-surface border border-gx-border rounded-gx-lg shadow-gx-md p-10">
-
-        {/* Logo */}
-        <div className="flex items-center gap-2.5 mb-1">
-          <span className="text-[28px] text-gx-accent leading-none">⬡</span>
-          <span className="text-[22px] font-bold text-gx-text">Gx-Portal</span>
-        </div>
-        <p className="text-xs text-gx-text-2 mb-7">Genolyx Analysis Portal</p>
-
-        <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="username">Username</Label>
-            <Input
-              id="username"
-              type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              autoComplete="username"
-              required
-            />
+    <div className="min-h-screen flex items-center justify-center p-6">
+      <Card className="w-[360px]">
+        <Card.Header>
+          <div className="flex items-center gap-2.5">
+            <span className="text-[28px] leading-none">⬡</span>
+            <Card.Title>Gx-Portal</Card.Title>
           </div>
+          <Card.Description>Genolyx Analysis Portal</Card.Description>
+        </Card.Header>
+        <Card.Content>
+          <Form onSubmit={handleSubmit} className="flex flex-col gap-4">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="username">Username</Label>
+              <Input
+                id="username"
+                type="text"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                autoComplete="username"
+                required
+                fullWidth
+              />
+            </div>
 
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="password">Password</Label>
-            <Input
-              id="password"
-              type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoComplete="current-password"
-              required
-            />
-          </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="password">Password</Label>
+              <Input
+                id="password"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoComplete="current-password"
+                required
+                fullWidth
+              />
+            </div>
 
-          {error && (
-            <p className="text-xs text-gx-danger bg-gx-danger/10 rounded-gx-sm px-3 py-2">
-              {error}
-            </p>
-          )}
+            {error && (
+              <Alert status="danger">
+                <Alert.Content>
+                  <Alert.Description>{error}</Alert.Description>
+                </Alert.Content>
+              </Alert>
+            )}
 
-          <Button
-            type="submit"
-            variant="primary"
-            size="lg"
-            loading={loading}
-            className="w-full mt-1"
-          >
-            Sign In
-          </Button>
-        </form>
-      </div>
+            <Button
+              type="submit"
+              variant="primary"
+              size="lg"
+              isDisabled={loading}
+              fullWidth
+            >
+              {loading ? 'Signing in…' : 'Sign In'}
+            </Button>
+          </Form>
+        </Card.Content>
+      </Card>
     </div>
   );
 }

@@ -2,10 +2,11 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
+import { ArrowRight } from 'lucide-react';
+import { Button, Link, Table } from '@heroui/react';
 import { ordersApi } from '../../lib/api/orders';
 import { PageHeader } from '../ui/PageHeader';
-import { Button } from '../ui/Button';
-import { OrderStatusBadge } from '../ui/Badge';
+import { OrderStatusBadge } from '../ui/OrderStatusBadge';
 import type { Order } from '@gx-portal/types';
 
 const REVIEWABLE_STATUSES = new Set(['COMPLETED', 'REPORT_READY']);
@@ -36,48 +37,59 @@ export function ReviewListPageClient() {
       />
 
       {loading ? (
-        <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>Loading…</p>
+        <p className="py-4 text-sm text-muted">Loading…</p>
       ) : orders.length === 0 ? (
-        <p style={{ color: 'var(--text-muted)', padding: '1rem 0' }}>No orders ready for review.</p>
+        <p className="py-4 text-sm text-muted">No orders ready for review.</p>
       ) : (
-        <div style={{ overflowX: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-            <thead>
-              <tr style={{ borderBottom: '1px solid var(--border)' }}>
-                {['Order ID', 'Service', 'Status', 'Updated', ''].map((h) => (
-                  <th key={h} style={{ padding: '8px 12px', textAlign: 'left', fontSize: '0.75rem', textTransform: 'uppercase', letterSpacing: '0.05em', color: 'var(--text-muted)' }}>{h}</th>
+        <Table>
+          <Table.ScrollContainer>
+            <Table.Content aria-label="Orders ready for review">
+              <Table.Header>
+                <Table.Column isRowHeader>Order ID</Table.Column>
+                <Table.Column>Service</Table.Column>
+                <Table.Column>Status</Table.Column>
+                <Table.Column>Updated</Table.Column>
+                <Table.Column> </Table.Column>
+              </Table.Header>
+              <Table.Body>
+                {orders.map((o) => (
+                  <Table.Row key={o.order_id}>
+                    <Table.Cell>
+                      <Link
+                        href={`/review/${o.order_id}`}
+                        className="font-mono text-xs text-accent"
+                      >
+                        {o.order_id}
+                      </Link>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <code className="text-xs">{o.service_code}</code>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <OrderStatusBadge status={o.status} />
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs text-muted whitespace-nowrap">
+                        {o.updated_at?.slice(0, 16).replace('T', ' ') ?? '—'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Button
+                        size="sm"
+                        variant="primary"
+                        onPress={() => router.push(`/review/${o.order_id}`)}
+                        className="gap-1.5"
+                      >
+                        Open Review
+                        <ArrowRight size={14} strokeWidth={2} aria-hidden />
+                      </Button>
+                    </Table.Cell>
+                  </Table.Row>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {orders.map((o) => (
-                <tr key={o.order_id} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '10px 12px' }}>
-                    <code style={{ fontSize: '0.85em', color: 'var(--accent)' }}>{o.order_id}</code>
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <code style={{ fontSize: '0.85em' }}>{o.service_code}</code>
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <OrderStatusBadge status={o.status} />
-                  </td>
-                  <td style={{ padding: '10px 12px', color: 'var(--text-muted)', fontSize: '0.85em' }}>
-                    {o.updated_at?.slice(0, 16).replace('T', ' ') ?? '—'}
-                  </td>
-                  <td style={{ padding: '10px 12px' }}>
-                    <Button
-                      size="sm"
-                      variant="accent"
-                      onClick={() => router.push(`/review/${o.order_id}`)}
-                    >
-                      Open Review
-                    </Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
       )}
     </div>
   );

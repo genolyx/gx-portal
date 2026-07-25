@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Accordion, Card, Disclosure, Tabs } from '@heroui/react';
 import { reviewApi } from '../../lib/api/review';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { useReviewStore } from '../../lib/store/reviewStore';
@@ -12,7 +13,6 @@ import { CoverageViewer } from './CoverageViewer/CoverageViewer';
 import { ReportBuilder } from './ReportBuilder/ReportBuilder';
 import { GeneDatabase } from './GeneDatabase/GeneDatabase';
 import type { QcSummary, VariantStats } from '@gx-portal/types';
-import styles from './Review.module.css';
 
 type ReviewTab = 'variants' | 'darkgenes' | 'pgx' | 'report' | 'genedb' | 'coverage';
 
@@ -24,8 +24,6 @@ const TABS: { id: ReviewTab; label: string }[] = [
   { id: 'genedb',    label: 'Gene database' },
   { id: 'coverage',  label: 'Coverage'      },
 ];
-
-// ─── QC panel ────────────────────────────────────────────────────────────────
 
 interface QcRow { metric: string; value: string; unit: string; status?: 'ok' | 'warn' | 'err' }
 
@@ -54,62 +52,80 @@ function covRows(qc: QcSummary): QcRow[] {
   return rows;
 }
 
-function statusClass(status?: 'ok' | 'warn' | 'err') {
-  if (status === 'ok')   return styles.qcStatusOk;
-  if (status === 'warn') return styles.qcStatusWarn;
-  if (status === 'err')  return styles.qcStatusErr;
-  return '';
+function statusLabel(status?: 'ok' | 'warn' | 'err') {
+  if (status === 'ok') return { text: '✓ Pass', className: 'text-success font-semibold' };
+  if (status === 'warn') return { text: '⚠ Check', className: 'text-warning font-semibold' };
+  if (status === 'err') return { text: '✗ Fail', className: 'text-danger font-semibold' };
+  return { text: '—', className: 'text-muted' };
 }
 
 function QcTable({ rows, header }: { rows: QcRow[]; header: string }) {
+  const sectionId = header.toLowerCase().replace(/\s+/g, '-');
   return (
-    <details className={styles.qcSection} open>
-      <summary>{header}</summary>
-      {rows.length === 0
-        ? <p style={{ padding: '10px 14px', fontSize: 12, color: 'var(--text-muted)', margin: 0 }}>No data</p>
-        : (
-          <div className={styles.qcTableWrap}>
-            <table className={styles.qcTable}>
-              <thead><tr><th>Metric</th><th>Value</th><th>Unit</th><th>Status</th></tr></thead>
-              <tbody>
-                {rows.map((r) => (
-                  <tr key={r.metric}>
-                    <td>{r.metric}</td>
-                    <td className={styles.mono ?? ''}>{r.value}</td>
-                    <td style={{ color: 'var(--text-muted)' }}>{r.unit}</td>
-                    <td className={statusClass(r.status)}>
-                      {r.status === 'ok' ? '✓ Pass' : r.status === 'warn' ? '⚠ Check' : r.status === 'err' ? '✗ Fail' : '—'}
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )
-      }
-    </details>
+    <Accordion defaultExpandedKeys={[sectionId]} variant="surface">
+      <Accordion.Item id={sectionId}>
+        <Accordion.Heading>
+          <Accordion.Trigger>{header}</Accordion.Trigger>
+        </Accordion.Heading>
+        <Accordion.Panel>
+          <Accordion.Body>
+            {rows.length === 0 ? (
+              <p className="px-3 py-2 text-xs text-muted">No data</p>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full border-collapse text-[11px]">
+                  <thead>
+                    <tr className="border-b border-border">
+                      {['Metric', 'Value', 'Unit', 'Status'].map((h) => (
+                        <th key={h} className="px-3 py-1.5 text-left text-[10px] uppercase tracking-wide text-muted font-medium">{h}</th>
+                      ))}
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {rows.map((r) => {
+                      const st = statusLabel(r.status);
+                      return (
+                        <tr key={r.metric} className="border-b border-border hover:bg-accent/5">
+                          <td className="px-3 py-1.5">{r.metric}</td>
+                          <td className="px-3 py-1.5 font-mono">{r.value}</td>
+                          <td className="px-3 py-1.5 text-muted">{r.unit}</td>
+                          <td className={`px-3 py-1.5 ${st.className}`}>{st.text}</td>
+                        </tr>
+                      );
+                    })}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </Accordion.Body>
+        </Accordion.Panel>
+      </Accordion.Item>
+    </Accordion>
   );
 }
 
 function QcPanel({ qc }: { qc: QcSummary }) {
-  const [open, setOpen] = useState(true);
   return (
-    <div className={styles.qcPanel}>
-      <h3 className={styles.qcTitle} onClick={() => setOpen((o) => !o)}>
-        Quality Control Results
-        <span style={{ fontSize: 12, fontWeight: 400 }}>{open ? '▲ collapse' : '▼ expand'}</span>
-      </h3>
-      {open && (
-        <div className={styles.qcGrid}>
-          <QcTable rows={seqRows(qc)} header="Sequencing metrics" />
-          <QcTable rows={covRows(qc)} header="Analysis quality control" />
-        </div>
-      )}
-    </div>
+    <Card className="mb-4 overflow-hidden">
+      <Disclosure defaultExpanded>
+        <Disclosure.Heading className="bg-surface">
+          <Disclosure.Trigger className="flex w-full items-center justify-between gap-3 px-4 py-3 text-left">
+            <span className="text-sm font-semibold">Quality Control Results</span>
+            <Disclosure.Indicator />
+          </Disclosure.Trigger>
+        </Disclosure.Heading>
+        <Disclosure.Content>
+          <Disclosure.Body className="border-t border-border p-0">
+            <div className="grid grid-cols-1 divide-y divide-border sm:grid-cols-2 sm:divide-x sm:divide-y-0">
+              <QcTable rows={seqRows(qc)} header="Sequencing metrics" />
+              <QcTable rows={covRows(qc)} header="Analysis quality control" />
+            </div>
+          </Disclosure.Body>
+        </Disclosure.Content>
+      </Disclosure>
+    </Card>
   );
 }
-
-// ─── carrier banner ──────────────────────────────────────────────────────────
 
 function CarrierBanner({ stats, serviceCode }: { stats: VariantStats; serviceCode: string }) {
   const plp   = stats.pathogenic_or_likely ?? 0;
@@ -119,35 +135,33 @@ function CarrierBanner({ stats, serviceCode }: { stats: VariantStats; serviceCod
   const isCarrier = serviceCode.includes('carrier') || serviceCode.includes('whole_exome') || serviceCode.includes('health');
   if (!isCarrier) return null;
 
-  let cls   = styles.bannerNegative;
+  let bannerClass = 'border-success/30 bg-success/10';
   let icon  = '✓';
   let title = 'No pathogenic variants detected';
   let detail = `${total} variants analysed — no P/LP findings`;
 
   if (plp > 0) {
-    cls   = styles.bannerPositive;
+    bannerClass = 'border-danger/30 bg-danger/10';
     icon  = '⚑';
     title = `${plp} pathogenic / likely pathogenic variant${plp > 1 ? 's' : ''} found`;
     detail = `${total} variants analysed, ${vus} VUS`;
   } else if (vus > 0) {
-    cls   = styles.bannerUncertain;
+    bannerClass = 'border-warning/30 bg-warning/10';
     icon  = '?';
     title = `${vus} variant${vus > 1 ? 's' : ''} of uncertain significance`;
     detail = `${total} variants analysed — no P/LP, ${vus} VUS`;
   }
 
   return (
-    <div className={`${styles.carrierBanner} ${cls}`}>
-      <span className={styles.bannerIcon}>{icon}</span>
+    <div className={`mb-3.5 flex flex-wrap items-center gap-3 rounded-xl border px-4 py-3 ${bannerClass}`}>
+      <span className="text-2xl shrink-0">{icon}</span>
       <div>
-        <p className={styles.bannerText}>{title}</p>
-        <p className={styles.bannerDetail}>{detail}</p>
+        <p className="text-[15px] font-bold">{title}</p>
+        <p className="text-xs text-muted">{detail}</p>
       </div>
     </div>
   );
 }
-
-// ─── main component ───────────────────────────────────────────────────────────
 
 export function ReviewPageClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
@@ -163,8 +177,8 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
       .finally(() => setLoading(false));
   }, [orderId, reset, setReviewData]);
 
-  if (loading) return <p className={styles.center}>Loading review data…</p>;
-  if (error)   return <p style={{ textAlign: 'center', padding: 48, color: 'var(--text-danger)' }}>{error}</p>;
+  if (loading) return <p className="py-12 text-center text-muted">Loading review data…</p>;
+  if (error)   return <p className="py-12 text-center text-danger">{error}</p>;
   if (!reviewData) return null;
 
   const serviceCode  = String(reviewData.service_code ?? reviewData._service_code ?? reviewData.type ?? '');
@@ -181,44 +195,47 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
         backHref="/orders"
       />
 
-      {/* result meta */}
-      <p className={styles.resultMeta}>
-        Sample: <strong>{sampleName}</strong>
-        {serviceCode && <> · Service: <strong>{serviceCode.replace(/_/g, ' ')}</strong></>}
-        {variantStats?.total != null && <> · <strong>{variantStats.total}</strong> variants</>}
-        {variantStats?.pathogenic_or_likely != null && <> · <strong style={{ color: 'var(--text-danger)' }}>{variantStats.pathogenic_or_likely} P/LP</strong></>}
-        {variantStats?.vus != null && <> · <strong style={{ color: 'var(--text-warning, #d97706)' }}>{variantStats.vus} VUS</strong></>}
+      <p className="mb-3 text-xs leading-relaxed text-muted">
+        Sample: <strong className="text-foreground">{sampleName}</strong>
+        {serviceCode && <> · Service: <strong className="text-foreground">{serviceCode.replace(/_/g, ' ')}</strong></>}
+        {variantStats?.total != null && <> · <strong className="text-foreground">{variantStats.total}</strong> variants</>}
+        {variantStats?.pathogenic_or_likely != null && <> · <strong className="text-danger">{variantStats.pathogenic_or_likely} P/LP</strong></>}
+        {variantStats?.vus != null && <> · <strong className="text-warning">{variantStats.vus} VUS</strong></>}
         {generatedAt && <> · Generated: {generatedAt}</>}
       </p>
 
-      {/* carrier banner */}
       {variantStats && <CarrierBanner stats={variantStats} serviceCode={serviceCode} />}
 
-      {/* QC panel */}
       {qcSummary && <QcPanel qc={qcSummary} />}
 
-      {/* sub-tabs */}
-      <div className={styles.tabs}>
-        {TABS.map((t) => (
-          <button
-            key={t.id}
-            type="button"
-            className={`${styles.tab} ${tab === t.id ? styles.active : ''}`}
-            onClick={() => setTab(t.id)}
-          >
-            {t.label}
-          </button>
-        ))}
-      </div>
+      <Tabs
+        selectedKey={tab}
+        onSelectionChange={(key) => setTab(key as ReviewTab)}
+        className="mb-4"
+      >
+        <Tabs.ListContainer>
+          <Tabs.List aria-label="Review sections">
+            {TABS.map((t) => (
+              <Tabs.Tab key={t.id} id={t.id} className="relative">
+                {t.label}
+                {/* Must live inside each Tab — sibling of Tab breaks SharedElementTransition */}
+                <Tabs.Indicator />
+              </Tabs.Tab>
+            ))}
+          </Tabs.List>
+        </Tabs.ListContainer>
 
-      <div className={styles.panel}>
-        {tab === 'variants'  && <VariantTable  orderId={orderId} />}
-        {tab === 'darkgenes' && <DarkGenesPanel />}
-        {tab === 'pgx'       && <PgxReview orderId={orderId} />}
-        {tab === 'report'    && <ReportBuilder orderId={orderId} />}
-        {tab === 'genedb'    && <GeneDatabase />}
-        {tab === 'coverage'  && <CoverageViewer orderId={orderId} />}
-      </div>
+        {TABS.map((t) => (
+          <Tabs.Panel key={t.id} id={t.id} className="min-h-[400px] pt-4">
+            {t.id === 'variants'  && <VariantTable  orderId={orderId} />}
+            {t.id === 'darkgenes' && <DarkGenesPanel />}
+            {t.id === 'pgx'       && <PgxReview orderId={orderId} />}
+            {t.id === 'report'    && <ReportBuilder orderId={orderId} />}
+            {t.id === 'genedb'    && <GeneDatabase />}
+            {t.id === 'coverage'  && <CoverageViewer orderId={orderId} />}
+          </Tabs.Panel>
+        ))}
+      </Tabs>
     </div>
   );
 }

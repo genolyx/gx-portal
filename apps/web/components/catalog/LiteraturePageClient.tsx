@@ -1,197 +1,384 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import {
+  Button,
+  Chip,
+  Input,
+  Label,
+  Link,
+  ListBox,
+  Modal,
+  Select,
+  Table,
+} from '@heroui/react';
+import { Trash2 } from 'lucide-react';
 import { catalogApi, type LiteratureArticle } from '../../lib/api/catalog';
+import { LabeledCheckbox } from '../ui/LabeledCheckbox';
 import { PageHeader } from '../ui/PageHeader';
-import { Button } from '../ui/Button';
-import styles from './Catalog.module.css';
+import { RefreshButton } from '../ui/RefreshButton';
 
 const PER_PAGE = 20;
 
 export function LiteraturePageClient() {
   const [articles, setArticles] = useState<LiteratureArticle[]>([]);
-  const [total, setTotal]       = useState(0);
-  const [page, setPage]         = useState(1);
-  const [q, setQ]               = useState('');
-  const [sort, setSort]         = useState('cached_at');
-  const [loading, setLoading]   = useState(true);
+  const [total, setTotal] = useState(0);
+  const [page, setPage] = useState(1);
+  const [q, setQ] = useState('');
+  const [sort, setSort] = useState('cached_at');
+  const [loading, setLoading] = useState(true);
   const [dbMissing, setDbMissing] = useState(false);
-  const [stats, setStats]       = useState<{ total?: number; by_gene?: Record<string, number> } | null>(null);
+  const [stats, setStats] = useState<{ total?: number; by_gene?: Record<string, number> } | null>(
+    null,
+  );
 
-  // Manual search
-  const [gene, setGene]         = useState('');
-  const [hgvsc, setHgvsc]       = useState('');
-  const [hgvsp, setHgvsp]       = useState('');
+  const [gene, setGene] = useState('');
+  const [hgvsc, setHgvsc] = useState('');
+  const [hgvsp, setHgvsp] = useState('');
   const [forceRefresh, setForceRefresh] = useState(false);
   const [searching, setSearching] = useState(false);
   const [searchMsg, setSearchMsg] = useState('');
   const [searchResult, setSearchResult] = useState<LiteratureArticle[]>([]);
 
-  // Detail modal
-  const [detail, setDetail]     = useState<LiteratureArticle | null>(null);
+  const [detail, setDetail] = useState<LiteratureArticle | null>(null);
 
   const loadStats = useCallback(async () => {
-    try { const s = await catalogApi.getStats(); setStats(s); }
-    catch { /* ignore */ }
+    try {
+      const s = await catalogApi.getStats();
+      setStats(s);
+    } catch {
+      /* ignore */
+    }
   }, []);
 
-  const load = useCallback(async (p = page, query = q, sortBy = sort) => {
-    setLoading(true);
-    try {
-      const res = await catalogApi.getArticles({ page: p, per_page: PER_PAGE, q: query || undefined, sort: sortBy });
-      setArticles(res.articles ?? []);
-      setTotal(res.total ?? 0);
-      setDbMissing(res.db_missing ?? false);
-    } catch {
-      setArticles([]); setTotal(0);
-    } finally { setLoading(false); }
-  }, [page, q, sort]);
+  const load = useCallback(
+    async (p = page, query = q, sortBy = sort, manual = false) => {
+      setLoading(true);
+      try {
+        const res = await catalogApi.getArticles({
+          page: p,
+          per_page: PER_PAGE,
+          q: query || undefined,
+          sort: sortBy,
+        });
+        setArticles(res.articles ?? []);
+        setTotal(res.total ?? 0);
+        setDbMissing(res.db_missing ?? false);
+      } catch (e) {
+        setArticles([]);
+        setTotal(0);
+        if (manual) throw e instanceof Error ? e : new Error('Failed to refresh literature');
+      } finally {
+        setLoading(false);
+      }
+    },
+    [page, q, sort],
+  );
 
-  useEffect(() => { load(1, q, sort); loadStats(); }, []);
+  useEffect(() => {
+    void load(1, q, sort, false);
+    void loadStats();
+  }, []);
 
   const handleSearch = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!gene.trim()) { setSearchMsg('Gene is required.'); return; }
-    setSearching(true); setSearchMsg('Searching PubMed…'); setSearchResult([]);
+    if (!gene.trim()) {
+      setSearchMsg('Gene is required.');
+      return;
+    }
+    setSearching(true);
+    setSearchMsg('Searching PubMed…');
+    setSearchResult([]);
     try {
-      const res = await catalogApi.search({ gene: gene.trim(), hgvsc: hgvsc.trim() || undefined, hgvsp: hgvsp.trim() || undefined, force_refresh: forceRefresh });
+      const res = await catalogApi.search({
+        gene: gene.trim(),
+        hgvsc: hgvsc.trim() || undefined,
+        hgvsp: hgvsp.trim() || undefined,
+        force_refresh: forceRefresh,
+      });
       setSearchResult(res.articles ?? []);
       setSearchMsg(`Found ${res.total ?? res.articles?.length ?? 0} articles`);
       await load(1, q, sort);
       await loadStats();
     } catch (err) {
       setSearchMsg(err instanceof Error ? err.message : 'Search failed');
-    } finally { setSearching(false); }
+    } finally {
+      setSearching(false);
+    }
   };
 
   const handleDelete = async (pmid: string) => {
     if (!confirm(`Remove article ${pmid} from cache?`)) return;
-    try { await catalogApi.deleteArticle(pmid); await load(page, q, sort); await loadStats(); }
-    catch (err) { alert(err instanceof Error ? err.message : 'Delete failed'); }
+    try {
+      await catalogApi.deleteArticle(pmid);
+      await load(page, q, sort);
+      await loadStats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    }
   };
 
   const handleClearAll = async () => {
     if (!confirm('Clear ALL literature cache? This cannot be undone.')) return;
-    try { await catalogApi.clearCache(); await load(1, q, sort); await loadStats(); }
-    catch (err) { alert(err instanceof Error ? err.message : 'Clear failed'); }
+    try {
+      await catalogApi.clearCache();
+      await load(1, q, sort);
+      await loadStats();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Clear failed');
+    }
   };
 
-  const applyFilter = () => { setPage(1); load(1, q, sort); };
-  const totalPages  = Math.max(1, Math.ceil(total / PER_PAGE));
+  const applyFilter = () => {
+    setPage(1);
+    load(1, q, sort);
+  };
+  const totalPages = Math.max(1, Math.ceil(total / PER_PAGE));
 
   return (
     <div>
       <PageHeader
         title="Literature Cache"
         description="PubMed articles cached from variant searches."
-        action={
-          <div style={{ display: 'flex', gap: 8 }}>
-            <Button size="sm" variant="ghost" onClick={() => { load(1, q, sort); loadStats(); }} loading={loading}>↻ Refresh</Button>
-            <Button size="sm" variant="ghost" onClick={handleClearAll}>Clear All</Button>
+        actions={
+          <div className="flex gap-2">
+            <RefreshButton
+              variant="ghost"
+              label="Refresh"
+              successToast="Literature refreshed"
+              isLoading={loading}
+              onPress={async () => {
+                await load(1, q, sort, true);
+                await loadStats();
+              }}
+            />
+            <Button size="sm" variant="ghost" onPress={handleClearAll}>
+              Clear All
+            </Button>
           </div>
         }
       />
 
-      {/* Stats */}
       {stats && (
-        <div style={{ display: 'flex', gap: 8, marginBottom: 16, flexWrap: 'wrap' }}>
-          <span className={styles.pill}>{stats.total ?? 0} articles cached</span>
-          {stats.by_gene && Object.entries(stats.by_gene).slice(0, 8).map(([g, c]) => (
-            <span key={g} className={styles.pill}>{g}: {c}</span>
-          ))}
+        <div className="flex flex-wrap gap-2 mb-4">
+          <Chip size="sm" variant="soft">
+            <Chip.Label>{stats.total ?? 0} articles cached</Chip.Label>
+          </Chip>
+          {stats.by_gene &&
+            Object.entries(stats.by_gene)
+              .slice(0, 8)
+              .map(([g, c]) => (
+                <Chip key={g} size="sm" variant="soft">
+                  <Chip.Label>
+                    {g}: {c}
+                  </Chip.Label>
+                </Chip>
+              ))}
         </div>
       )}
 
       {dbMissing && (
-        <div className={styles.infoBox}>
-          📭 Literature database not yet initialised. Use the Search panel below to cache articles for variants — the DB will be created automatically on first search.
+        <div className="rounded-lg border border-border bg-surface-secondary p-4 text-sm mb-4">
+          Literature database not yet initialised. Use the Search panel below to cache articles for
+          variants — the DB will be created automatically on first search.
         </div>
       )}
 
-      {/* Search bar */}
-      <div style={{ display: 'flex', gap: 8, marginBottom: 14, flexWrap: 'wrap' }}>
-        <input value={q} onChange={(e) => setQ(e.target.value)} placeholder="Search by title, abstract, PMID, author…"
-          className={styles.input} style={{ flex: 1, minWidth: 220 }}
-          onKeyDown={(e) => e.key === 'Enter' && applyFilter()} />
-        <select value={sort} onChange={(e) => { setSort(e.target.value); load(1, q, e.target.value); }} className={styles.input}>
-          <option value="cached_at">Cached Date</option>
-          <option value="pub_date">Pub Date</option>
-        </select>
+      <div className="flex flex-wrap gap-2 mb-4">
+        <Input
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="Search by title, abstract, PMID, author…"
+          className="flex-1 min-w-[220px]"
+          onKeyDown={(e) => e.key === 'Enter' && applyFilter()}
+        />
+        <Select
+          selectedKey={sort}
+          onSelectionChange={(key) => {
+            const next = String(key);
+            setSort(next);
+            load(1, q, next);
+          }}
+        >
+          <Select.Trigger className="min-w-[140px]">
+            <Select.Value />
+            <Select.Indicator />
+          </Select.Trigger>
+          <Select.Popover>
+            <ListBox>
+              <ListBox.Item id="cached_at" textValue="Cached Date">
+                Cached Date
+              </ListBox.Item>
+              <ListBox.Item id="pub_date" textValue="Pub Date">
+                Pub Date
+              </ListBox.Item>
+            </ListBox>
+          </Select.Popover>
+        </Select>
       </div>
 
-      {/* Manual search panel */}
-      <details className={styles.searchDetails} style={{ marginBottom: 16 }}>
-        <summary className={styles.searchSummary}>🔍 Search literature for a variant</summary>
-        <form onSubmit={handleSearch} style={{ marginTop: 12, display: 'flex', gap: 10, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-          <div>
-            <label className={styles.label}>Gene *</label>
-            <input value={gene} onChange={(e) => setGene(e.target.value)} placeholder="e.g. BRCA2" className={styles.input} style={{ width: 120 }} />
+      <details className="rounded-lg border border-border bg-surface-secondary p-4 mb-4">
+        <summary className="cursor-pointer text-sm font-medium">
+          Search literature for a variant
+        </summary>
+        <form
+          onSubmit={handleSearch}
+          className="mt-3 flex flex-wrap gap-3 items-end"
+        >
+          <div className="flex flex-col gap-1.5">
+            <Label>Gene *</Label>
+            <Input
+              value={gene}
+              onChange={(e) => setGene(e.target.value)}
+              placeholder="e.g. BRCA2"
+              className="w-[120px]"
+            />
           </div>
-          <div>
-            <label className={styles.label}>HGVS.c</label>
-            <input value={hgvsc} onChange={(e) => setHgvsc(e.target.value)} placeholder="e.g. c.5266dupC" className={styles.input} style={{ width: 160 }} />
+          <div className="flex flex-col gap-1.5">
+            <Label>HGVS.c</Label>
+            <Input
+              value={hgvsc}
+              onChange={(e) => setHgvsc(e.target.value)}
+              placeholder="e.g. c.5266dupC"
+              className="w-[160px]"
+            />
           </div>
-          <div>
-            <label className={styles.label}>HGVS.p</label>
-            <input value={hgvsp} onChange={(e) => setHgvsp(e.target.value)} placeholder="e.g. p.Gln1756fs" className={styles.input} style={{ width: 160 }} />
+          <div className="flex flex-col gap-1.5">
+            <Label>HGVS.p</Label>
+            <Input
+              value={hgvsp}
+              onChange={(e) => setHgvsp(e.target.value)}
+              placeholder="e.g. p.Gln1756fs"
+              className="w-[160px]"
+            />
           </div>
-          <label className={styles.checkLabel}>
-            <input type="checkbox" checked={forceRefresh} onChange={(e) => setForceRefresh(e.target.checked)} /> Force refresh
-          </label>
-          <Button size="sm" variant="primary" type="submit" loading={searching}>Search &amp; Cache</Button>
-          {searchMsg && <span className={styles.muted}>{searchMsg}</span>}
+          <LabeledCheckbox isSelected={forceRefresh} onChange={setForceRefresh}>
+            Force refresh
+          </LabeledCheckbox>
+          <Button size="sm" variant="primary" type="submit" isDisabled={searching}>
+            {searching ? 'Searching…' : 'Search & Cache'}
+          </Button>
+          {searchMsg && <span className="text-sm text-muted">{searchMsg}</span>}
         </form>
         {searchResult.length > 0 && (
-          <div style={{ marginTop: 10 }}>
-            <ArticleTable articles={searchResult} onDelete={handleDelete} onDetail={setDetail} compact />
+          <div className="mt-3">
+            <ArticleTable
+              articles={searchResult}
+              onDelete={handleDelete}
+              onDetail={setDetail}
+              compact
+            />
           </div>
         )}
       </details>
 
-      {/* Articles table */}
       {loading ? (
-        <p className={styles.muted}>Loading…</p>
+        <p className="text-muted">Loading…</p>
       ) : articles.length === 0 && !dbMissing ? (
-        <p className={styles.muted}>No articles in cache.</p>
+        <p className="text-muted">No articles in cache.</p>
       ) : (
         <ArticleTable articles={articles} onDelete={handleDelete} onDetail={setDetail} />
       )}
 
-      {/* Pagination */}
       {total > PER_PAGE && (
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center', marginTop: 12, flexWrap: 'wrap' }}>
-          <Button size="sm" variant="ghost" onClick={() => { setPage((p) => { const n = p - 1; load(n, q, sort); return n; })} } disabled={page <= 1}>‹ Prev</Button>
-          <span className={styles.muted}>Page {page} / {totalPages} · {total} articles</span>
-          <Button size="sm" variant="ghost" onClick={() => { setPage((p) => { const n = p + 1; load(n, q, sort); return n; })} } disabled={page >= totalPages}>Next ›</Button>
+        <div className="flex flex-wrap gap-2 items-center mt-3">
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={page <= 1}
+            onPress={() => {
+              const n = page - 1;
+              setPage(n);
+              load(n, q, sort);
+            }}
+          >
+            ‹ Prev
+          </Button>
+          <span className="text-sm text-muted">
+            Page {page} / {totalPages} · {total} articles
+          </span>
+          <Button
+            size="sm"
+            variant="ghost"
+            isDisabled={page >= totalPages}
+            onPress={() => {
+              const n = page + 1;
+              setPage(n);
+              load(n, q, sort);
+            }}
+          >
+            Next ›
+          </Button>
         </div>
       )}
 
-      {/* Detail modal */}
-      {detail && (
-        <div className={styles.modalOverlay} onClick={() => setDetail(null)}>
-          <div className={styles.modal} onClick={(e) => e.stopPropagation()}>
-            <div className={styles.modalHeader}>
-              <h3 style={{ margin: 0 }}>Article Detail</h3>
-              <Button size="sm" variant="ghost" onClick={() => setDetail(null)}>✕</Button>
-            </div>
-            <div style={{ padding: '14px 16px', maxHeight: '60vh', overflowY: 'auto', fontSize: 13, lineHeight: 1.7 }}>
-              <p><strong>PMID:</strong> <a href={`https://pubmed.ncbi.nlm.nih.gov/${detail.pmid}`} target="_blank" rel="noreferrer">{detail.pmid} ↗</a></p>
-              {detail.title   && <p><strong>Title:</strong> {detail.title}</p>}
-              {detail.journal && <p><strong>Journal:</strong> {detail.journal}</p>}
-              {detail.pub_date && <p><strong>Published:</strong> {detail.pub_date}</p>}
-              {detail.authors && <p><strong>Authors:</strong> {(detail.authors as string[]).join(', ')}</p>}
-              {detail.abstract && <p><strong>Abstract:</strong> {detail.abstract}</p>}
-              {detail.genes && <p><strong>Genes:</strong> {(detail.genes as string[]).join(', ')}</p>}
-            </div>
-          </div>
-        </div>
-      )}
+      <Modal isOpen={detail != null} onOpenChange={(open) => !open && setDetail(null)}>
+        <Modal.Backdrop>
+          <Modal.Container>
+            <Modal.Dialog>
+              <Modal.Header>
+                <Modal.Heading>Article Detail</Modal.Heading>
+                <Modal.CloseTrigger />
+              </Modal.Header>
+              <Modal.Body className="max-h-[60vh] overflow-y-auto text-sm leading-relaxed">
+                {detail && (
+                  <>
+                    <p>
+                      <strong>PMID:</strong>{' '}
+                      <Link
+                        href={`https://pubmed.ncbi.nlm.nih.gov/${detail.pmid}`}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
+                        {detail.pmid} ↗
+                      </Link>
+                    </p>
+                    {detail.title && (
+                      <p>
+                        <strong>Title:</strong> {detail.title}
+                      </p>
+                    )}
+                    {detail.journal && (
+                      <p>
+                        <strong>Journal:</strong> {detail.journal}
+                      </p>
+                    )}
+                    {detail.pub_date && (
+                      <p>
+                        <strong>Published:</strong> {detail.pub_date}
+                      </p>
+                    )}
+                    {detail.authors && (
+                      <p>
+                        <strong>Authors:</strong> {(detail.authors as string[]).join(', ')}
+                      </p>
+                    )}
+                    {detail.abstract && (
+                      <p>
+                        <strong>Abstract:</strong> {detail.abstract}
+                      </p>
+                    )}
+                    {detail.genes && (
+                      <p>
+                        <strong>Genes:</strong> {(detail.genes as string[]).join(', ')}
+                      </p>
+                    )}
+                  </>
+                )}
+              </Modal.Body>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
     </div>
   );
 }
 
 function ArticleTable({
-  articles, onDelete, onDetail, compact,
+  articles,
+  onDelete,
+  onDetail,
+  compact,
 }: {
   articles: LiteratureArticle[];
   onDelete: (pmid: string) => void;
@@ -199,39 +386,79 @@ function ArticleTable({
   compact?: boolean;
 }) {
   return (
-    <div className={styles.tableWrap}>
-      <table className={styles.table}>
-        <thead>
-          <tr>
-            <th>PMID</th>
-            <th>Title</th>
-            {!compact && <><th>Journal</th><th>Pub Date</th><th>Cached</th></>}
-            <th></th>
-          </tr>
-        </thead>
-        <tbody>
-          {articles.map((a) => (
-            <tr key={a.pmid}>
-              <td className={styles.mono} style={{ whiteSpace: 'nowrap' }}>
-                <a href={`https://pubmed.ncbi.nlm.nih.gov/${a.pmid}`} target="_blank" rel="noreferrer" className={styles.link}>{a.pmid}</a>
-              </td>
-              <td>
-                <button type="button" className={styles.titleBtn} onClick={() => onDetail(a)}>{a.title ?? '—'}</button>
-              </td>
-              {!compact && (
-                <>
-                  <td className={styles.muted} style={{ whiteSpace: 'nowrap' }}>{a.journal ?? '—'}</td>
-                  <td className={styles.muted} style={{ whiteSpace: 'nowrap' }}>{a.pub_date ?? '—'}</td>
-                  <td className={styles.muted} style={{ whiteSpace: 'nowrap' }}>{a.cached_at ? new Date(String(a.cached_at)).toLocaleDateString() : '—'}</td>
-                </>
-              )}
-              <td>
-                <Button size="sm" variant="ghost" onClick={() => onDelete(a.pmid)}>✕</Button>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
-    </div>
+    <Table>
+      <Table.ScrollContainer>
+        <Table.Content aria-label="Literature articles">
+          <Table.Header>
+            <Table.Column isRowHeader>PMID</Table.Column>
+            <Table.Column>Title</Table.Column>
+            {!compact && (
+              <>
+                <Table.Column>Journal</Table.Column>
+                <Table.Column>Pub Date</Table.Column>
+                <Table.Column>Cached</Table.Column>
+              </>
+            )}
+            <Table.Column>Actions</Table.Column>
+          </Table.Header>
+          <Table.Body>
+            {articles.map((a) => (
+              <Table.Row key={a.pmid}>
+                <Table.Cell>
+                  <Link
+                    href={`https://pubmed.ncbi.nlm.nih.gov/${a.pmid}`}
+                    target="_blank"
+                    rel="noreferrer"
+                    className="font-mono text-xs whitespace-nowrap"
+                  >
+                    {a.pmid}
+                  </Link>
+                </Table.Cell>
+                <Table.Cell>
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="h-auto min-h-0 p-0 text-left font-normal"
+                    onPress={() => onDetail(a)}
+                  >
+                    {a.title ?? '—'}
+                  </Button>
+                </Table.Cell>
+                {!compact && (
+                  <>
+                    <Table.Cell>
+                      <span className="text-sm text-muted whitespace-nowrap">
+                        {a.journal ?? '—'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted whitespace-nowrap">
+                        {a.pub_date ?? '—'}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted whitespace-nowrap">
+                        {a.cached_at ? new Date(String(a.cached_at)).toLocaleDateString() : '—'}
+                      </span>
+                    </Table.Cell>
+                  </>
+                )}
+                <Table.Cell>
+                  <Button
+                    size="sm"
+                    variant="danger"
+                    isIconOnly
+                    aria-label={`Delete PMID ${a.pmid}`}
+                    onPress={() => onDelete(a.pmid)}
+                  >
+                    <Trash2 size={15} strokeWidth={2} aria-hidden />
+                  </Button>
+                </Table.Cell>
+              </Table.Row>
+            ))}
+          </Table.Body>
+        </Table.Content>
+      </Table.ScrollContainer>
+    </Table>
   );
 }

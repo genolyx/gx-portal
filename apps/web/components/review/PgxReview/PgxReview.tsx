@@ -1,11 +1,11 @@
 'use client';
 
 import { useState } from 'react';
+import { Check, ChevronDown, ChevronUp, Eye, EyeOff, Save } from 'lucide-react';
 import { reviewApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import { Button } from '../../ui/Button';
-import { Badge } from '../../ui/Badge';
-import styles from './PgxReview.module.css';
+import { Button, Card, Chip } from '@heroui/react';
+import { LabeledCheckbox } from '../../ui/LabeledCheckbox';
 
 interface PgxGene {
   gene: string;
@@ -23,7 +23,7 @@ interface PgxGene {
   [key: string]: unknown;
 }
 
-const PHENOTYPE_VARIANT: Record<string, 'danger' | 'warning' | 'default' | 'success' | 'info'> = {
+const PHENOTYPE_COLOR: Record<string, 'danger' | 'warning' | 'default' | 'success' | 'accent'> = {
   'Poor Metabolizer':         'danger',
   'Ultrarapid Metabolizer':   'danger',
   'Intermediate Metabolizer': 'warning',
@@ -31,9 +31,9 @@ const PHENOTYPE_VARIANT: Record<string, 'danger' | 'warning' | 'default' | 'succ
   'Rapid Metabolizer':        'warning',
 };
 
-function phenotypeVariant(phenotype?: string): 'danger' | 'warning' | 'default' | 'success' | 'info' {
+function phenotypeColor(phenotype?: string): 'danger' | 'warning' | 'default' | 'success' | 'accent' {
   if (!phenotype) return 'default';
-  return PHENOTYPE_VARIANT[phenotype] ?? 'info';
+  return PHENOTYPE_COLOR[phenotype] ?? 'accent';
 }
 
 export function PgxReview({ orderId }: { orderId: string }) {
@@ -45,7 +45,7 @@ export function PgxReview({ orderId }: { orderId: string }) {
   const pgx = reviewData?.pgx;
 
   if (!pgx) {
-    return <p className={styles.empty}>No PGx data available for this order.</p>;
+    return <p className="py-8 text-center text-muted">No PGx data available for this order.</p>;
   }
 
   const geneResults: PgxGene[]        = (pgx.gene_results ?? []) as PgxGene[];
@@ -83,43 +83,51 @@ export function PgxReview({ orderId }: { orderId: string }) {
 
   return (
     <div>
-      {/* toolbar */}
-      <div className={styles.toolbar}>
-        <h3 className={styles.title}>PGx Pharmacogenomics Review</h3>
-        <div style={{ display: 'flex', gap: 8, alignItems: 'center' }}>
+      <div className="mb-4 flex flex-wrap items-center justify-between gap-2">
+        <h3 className="text-[15px] font-semibold">PGx Pharmacogenomics Review</h3>
+        <div className="flex flex-wrap items-center gap-2">
           {apoe && (
-            <span style={{ fontSize: 12, color: 'var(--text-muted)' }}>
-              APOE: <strong>{apoe.report_key ?? '—'}</strong>
+            <span className="text-xs text-muted">
+              APOE: <strong className="text-foreground">{apoe.report_key ?? '—'}</strong>
               {apoe.source && <span> ({apoe.source})</span>}
             </span>
           )}
-          <Button variant="ghost" size="sm" onClick={() => setShowSummary((s) => !s)}>
+          <Button
+            variant="ghost"
+            size="sm"
+            onPress={() => setShowSummary((s) => !s)}
+            className="gap-1.5"
+          >
+            {showSummary
+              ? <EyeOff size={14} strokeWidth={2} aria-hidden />
+              : <Eye size={14} strokeWidth={2} aria-hidden />}
             {showSummary ? 'Hide' : 'Show'} summary text
           </Button>
-          <Button variant="primary" size="sm" loading={saving} onClick={handleSave}>
-            {saved ? '✓ Saved' : 'Save Review'}
+          <Button
+            variant="primary"
+            size="sm"
+            isDisabled={saving}
+            onPress={() => void handleSave()}
+            className="gap-1.5"
+          >
+            {saved
+              ? <Check size={14} strokeWidth={2} aria-hidden />
+              : <Save size={14} strokeWidth={2} aria-hidden />}
+            {saving ? 'Saving…' : saved ? 'Saved' : 'Save Review'}
           </Button>
         </div>
       </div>
 
-      {/* summary text */}
       {showSummary && pgx.summary_text && (
-        <pre style={{
-          fontSize: 11, fontFamily: 'ui-monospace, Consolas, monospace',
-          padding: '10px 14px', borderRadius: 'var(--radius-md)',
-          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-          overflowX: 'auto', whiteSpace: 'pre-wrap', color: 'var(--text-secondary)',
-          marginBottom: 14,
-        }}>
+        <pre className="mb-3.5 overflow-x-auto whitespace-pre-wrap rounded-md border border-border bg-surface px-3.5 py-2.5 font-mono text-[11px] text-muted">
           {String(pgx.summary_text)}
         </pre>
       )}
 
-      {/* Actionable genes */}
       {actionable.length > 0 && (
         <>
-          <h4 className={styles.groupTitle}>Actionable genes ({actionable.length})</h4>
-          <div className={styles.grid}>
+          <h4 className="mb-2.5 text-[13px] font-semibold text-muted">Actionable genes ({actionable.length})</h4>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
             {actionable.map((g) => (
               <GeneCard key={g.gene} gene={g} onToggle={toggleConfirm} />
             ))}
@@ -127,11 +135,10 @@ export function PgxReview({ orderId }: { orderId: string }) {
         </>
       )}
 
-      {/* Informative genes */}
       {informative.length > 0 && (
         <>
-          <h4 className={styles.groupTitle} style={{ marginTop: 16 }}>Informative genes ({informative.length})</h4>
-          <div className={styles.grid}>
+          <h4 className="mt-4 mb-2.5 text-[13px] font-semibold text-muted">Informative genes ({informative.length})</h4>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
             {informative.map((g) => (
               <GeneCard key={g.gene} gene={g} onToggle={toggleConfirm} />
             ))}
@@ -139,11 +146,10 @@ export function PgxReview({ orderId }: { orderId: string }) {
         </>
       )}
 
-      {/* Custom / APOE */}
       {customResults.length > 0 && (
         <>
-          <h4 className={styles.groupTitle} style={{ marginTop: 16 }}>Custom genes ({customResults.length})</h4>
-          <div className={styles.grid}>
+          <h4 className="mt-4 mb-2.5 text-[13px] font-semibold text-muted">Custom genes ({customResults.length})</h4>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
             {customResults.map((g) => (
               <GeneCard key={g.gene} gene={g} onToggle={toggleConfirm} />
             ))}
@@ -151,11 +157,10 @@ export function PgxReview({ orderId }: { orderId: string }) {
         </>
       )}
 
-      {/* All PharmCAT genes (if present and not already shown) */}
       {allPharmcatGenes.length > 0 && geneResults.length === 0 && (
         <>
-          <h4 className={styles.groupTitle}>PharmCAT gene results</h4>
-          <div className={styles.grid}>
+          <h4 className="mb-2.5 text-[13px] font-semibold text-muted">PharmCAT gene results</h4>
+          <div className="grid grid-cols-[repeat(auto-fill,minmax(260px,1fr))] gap-3">
             {allPharmcatGenes.map((g) => (
               <GeneCard key={g.gene} gene={g} onToggle={toggleConfirm} />
             ))}
@@ -164,7 +169,7 @@ export function PgxReview({ orderId }: { orderId: string }) {
       )}
 
       {geneResults.length === 0 && customResults.length === 0 && allPharmcatGenes.length === 0 && (
-        <p className={styles.empty}>No gene results available in PGx data.</p>
+        <p className="py-8 text-center text-muted">No gene results available in PGx data.</p>
       )}
     </div>
   );
@@ -174,66 +179,78 @@ function GeneCard({ gene: g, onToggle }: { gene: PgxGene; onToggle: (gene: strin
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div className={`${styles.card} ${g.reviewer_confirmed ? styles.confirmed : ''}`}>
-      <div className={styles.cardHeader}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
-          <strong>{g.gene}</strong>
-          {g.guideline_source && (
-            <span style={{ fontSize: 10, padding: '1px 5px', borderRadius: 4, background: 'var(--bg-elevated)', color: 'var(--text-muted)', border: '1px solid var(--border)' }}>
-              {g.guideline_source}
-            </span>
-          )}
+    <Card
+      variant="secondary"
+      className={g.reviewer_confirmed ? 'border-success bg-success/5' : undefined}
+    >
+      <Card.Content className="flex flex-col gap-1.5">
+        <div className="flex items-start justify-between gap-2">
+          <div className="flex items-center gap-2">
+            <strong>{g.gene}</strong>
+            {g.guideline_source && (
+              <Chip size="sm" variant="soft" color="default">
+                <Chip.Label>{g.guideline_source}</Chip.Label>
+              </Chip>
+            )}
+          </div>
+          <LabeledCheckbox
+            isSelected={g.reviewer_confirmed ?? false}
+            onChange={(checked) => onToggle(g.gene, checked)}
+            contentClassName="text-xs"
+          >
+            Confirmed
+          </LabeledCheckbox>
         </div>
-        <label className={styles.confirmToggle}>
-          <input
-            type="checkbox"
-            checked={g.reviewer_confirmed ?? false}
-            onChange={(e) => onToggle(g.gene, e.target.checked)}
-          />
-          Confirmed
-        </label>
-      </div>
 
-      {g.diplotype && <p className={styles.diplotype}>{g.diplotype}</p>}
+        {g.diplotype && <p className="m-0 font-mono text-xs text-muted">{g.diplotype}</p>}
 
-      {g.phenotype && (
-        <Badge variant={phenotypeVariant(g.phenotype)}>
-          {g.phenotype}
-        </Badge>
-      )}
+        {g.phenotype && (
+          <Chip color={phenotypeColor(g.phenotype)} size="sm" variant="soft">
+            <Chip.Label>{g.phenotype}</Chip.Label>
+          </Chip>
+        )}
 
-      {g.activity_score !== undefined && (
-        <p className={styles.detail}>Activity score: <strong>{g.activity_score}</strong></p>
-      )}
+        {g.activity_score !== undefined && (
+          <p className="m-0 text-xs text-muted">Activity score: <strong className="text-foreground">{g.activity_score}</strong></p>
+        )}
 
-      {(g.allele1_function || g.allele2_function) && (
-        <p className={styles.detail} style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          {g.allele1_function}{g.allele2_function ? ` / ${g.allele2_function}` : ''}
-        </p>
-      )}
+        {(g.allele1_function || g.allele2_function) && (
+          <p className="m-0 text-[11px] text-muted">
+            {g.allele1_function}{g.allele2_function ? ` / ${g.allele2_function}` : ''}
+          </p>
+        )}
 
-      {g.recommendations && g.recommendations.length > 0 && (
-        <ul className={styles.recs}>
-          {g.recommendations.map((r, i) => <li key={i}>{r}</li>)}
-        </ul>
-      )}
+        {g.recommendations && g.recommendations.length > 0 && (
+          <ul className="m-0 mt-0.5 list-disc pl-4 text-xs text-muted">
+            {g.recommendations.map((r, i) => <li key={i} className="mb-0.5">{r}</li>)}
+          </ul>
+        )}
 
-      {g.reviewer_comment && (
-        <p className={styles.detail}><em>{g.reviewer_comment}</em></p>
-      )}
+        {g.reviewer_comment && (
+          <p className="m-0 text-xs text-muted"><em>{g.reviewer_comment}</em></p>
+        )}
 
-      {/* expand for extra details */}
-      {(g.call_source) && (
-        <button type="button" className={styles.expandBtn} onClick={() => setExpanded((v) => !v)}>
-          {expanded ? 'Less ▲' : 'More ▼'}
-        </button>
-      )}
-      {expanded && (
-        <div className={styles.expandBody}>
-          {g.call_source && <p className={styles.detail}>Call source: {g.call_source}</p>}
-          {g.category    && <p className={styles.detail}>Category: {g.category}</p>}
-        </div>
-      )}
-    </div>
+        {g.call_source && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-auto justify-start gap-1 px-0 text-[11px] text-muted"
+            onPress={() => setExpanded((v) => !v)}
+          >
+            {expanded
+              ? <ChevronUp size={12} strokeWidth={2} aria-hidden />
+              : <ChevronDown size={12} strokeWidth={2} aria-hidden />}
+            {expanded ? 'Less' : 'More'}
+          </Button>
+        )}
+        {expanded && (
+          <div className="mt-0.5 border-t border-border pt-1.5 text-xs text-muted">
+            {g.call_source && <p className="m-0">Call source: {g.call_source}</p>}
+            {g.category    && <p className="m-0">Category: {g.category}</p>}
+          </div>
+        )}
+      </Card.Content>
+    </Card>
   );
 }

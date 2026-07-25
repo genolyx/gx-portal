@@ -2,21 +2,52 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import {
+  Button,
+  Card,
+  Input,
+  Label,
+  ListBox,
+  Select,
+  Switch,
+} from '@heroui/react';
 import { clientsApi } from '../../../lib/api/admin';
 import { systemApi } from '../../../lib/api/system';
+import { LabeledCheckbox } from '../../ui/LabeledCheckbox';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { Toggle } from '../../ui/Toggle';
-import { MultiSelect } from '../../ui/MultiSelect';
 import type { Client, CreateClientDto } from '@gx-portal/types';
-import styles from '../Admin.module.css';
 
-interface Props { id: string; }
+function ServiceCheckboxGroup({
+  options,
+  selected,
+  onChange,
+}: {
+  options: string[];
+  selected: string[];
+  onChange: (value: string[]) => void;
+}) {
+  const toggle = (code: string, checked: boolean) => {
+    onChange(checked ? [...selected, code] : selected.filter((s) => s !== code));
+  };
 
-export function ClientFormPage({ id }: Props) {
-  const isNew = id === 'new';
+  return (
+    <div className="mt-2 flex flex-wrap gap-3">
+      {options.map((code) => (
+        <LabeledCheckbox
+          key={code}
+          isSelected={selected.includes(code)}
+          onChange={(checked) => toggle(code, checked)}
+        >
+          {code}
+        </LabeledCheckbox>
+      ))}
+    </div>
+  );
+}
+
+export function ClientFormPage({ id }: { id: string }) {
   const router = useRouter();
-  const [loading, setLoading] = useState(!isNew);
+  const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState('');
   const [availableServices, setAvailableServices] = useState<string[]>([]);
@@ -37,14 +68,18 @@ export function ClientFormPage({ id }: Props) {
   });
 
   useEffect(() => {
-    systemApi.services().then((svcs: unknown) => {
-      if (Array.isArray(svcs)) {
-        setAvailableServices((svcs as { code: string }[]).map((s) => s.code));
-      }
-    }).catch(() => {});
+    systemApi
+      .services()
+      .then((svcs: unknown) => {
+        if (Array.isArray(svcs)) {
+          setAvailableServices((svcs as { code: string }[]).map((s) => s.code));
+        }
+      })
+      .catch(() => {});
 
-    if (!isNew) {
-      clientsApi.getById(Number(id)).then((c: Client) => {
+    clientsApi
+      .getById(Number(id))
+      .then((c: Client) => {
         setForm({
           name: c.name,
           order_prefix: c.order_prefix ?? '',
@@ -59,10 +94,10 @@ export function ClientFormPage({ id }: Props) {
           sign_report: c.sign_report,
           service_codes: c.service_codes,
         });
-      }).catch(() => router.push('/admin/clients'))
-        .finally(() => setLoading(false));
-    }
-  }, [id, isNew, router]);
+      })
+      .catch(() => router.push('/admin/clients'))
+      .finally(() => setLoading(false));
+  }, [id, router]);
 
   const set = <K extends keyof CreateClientDto>(key: K, value: CreateClientDto[K]) =>
     setForm((prev) => ({ ...prev, [key]: value }));
@@ -72,11 +107,7 @@ export function ClientFormPage({ id }: Props) {
     setError('');
     setSaving(true);
     try {
-      if (isNew) {
-        await clientsApi.create(form);
-      } else {
-        await clientsApi.update(Number(id), form);
-      }
+      await clientsApi.update(Number(id), form);
       router.push('/admin/clients');
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Save failed');
@@ -85,124 +116,208 @@ export function ClientFormPage({ id }: Props) {
     }
   };
 
-  if (loading) return <p className={styles.empty}>Loading…</p>;
+  if (loading) return <p className="py-8 text-center text-muted">Loading…</p>;
 
   return (
     <div>
       <PageHeader
-        title={isNew ? 'New Client' : 'Update Client'}
-        description={isNew ? 'Register a new client organization.' : 'Update a client'}
+        title="Update Client"
+        description="Update a client"
         backHref="/admin/clients"
       />
 
-      <form onSubmit={handleSubmit} className={styles.form}>
-        <div className={styles.formGrid}>
-          <div className={styles.field}>
-            <label className={styles.label}>Client Name <span className={styles.req}>*</span></label>
-            <input
-              value={form.name}
-              onChange={(e) => set('name', e.target.value)}
-              required
-              className={styles.input}
-            />
-          </div>
+      <Card className="max-w-2xl">
+        <Card.Content>
+          <form onSubmit={handleSubmit} className="flex flex-col gap-6">
+            <div className="grid grid-cols-1 gap-5 sm:grid-cols-2">
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Client Name <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.name}
+                  onChange={(e) => set('name', e.target.value)}
+                  required
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Order Prefix <span className={styles.req}>*</span></label>
-            <input
-              value={form.order_prefix ?? ''}
-              onChange={(e) => set('order_prefix', e.target.value.toUpperCase())}
-              required
-              maxLength={2}
-              placeholder="GX"
-              className={styles.input}
-              style={{ maxWidth: 80, textTransform: 'uppercase' }}
-            />
-            <p className={styles.hint}>Two letters used in order IDs (e.g. CS<strong>GX</strong>26070001).</p>
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Order Prefix <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.order_prefix ?? ''}
+                  onChange={(e) => set('order_prefix', e.target.value.toUpperCase())}
+                  required
+                  maxLength={2}
+                  placeholder="GX"
+                  className="max-w-[80px] uppercase"
+                  fullWidth
+                />
+                <p className="text-xs text-muted">
+                  Two letters used in order IDs (e.g. CS<strong>GX</strong>26070001).
+                </p>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Address <span className={styles.req}>*</span></label>
-            <input value={form.address ?? ''} onChange={(e) => set('address', e.target.value)} className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Address <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  value={form.address ?? ''}
+                  onChange={(e) => set('address', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Email <span className={styles.req}>*</span></label>
-            <input type="email" value={form.email ?? ''} onChange={(e) => set('email', e.target.value)} className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Email <span className="text-danger">*</span>
+                </Label>
+                <Input
+                  type="email"
+                  value={form.email ?? ''}
+                  onChange={(e) => set('email', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Phone Number</label>
-            <input value={form.phone ?? ''} onChange={(e) => set('phone', e.target.value)} className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Phone Number</Label>
+                <Input
+                  value={form.phone ?? ''}
+                  onChange={(e) => set('phone', e.target.value)}
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Language</label>
-            <input value={form.language ?? ''} onChange={(e) => set('language', e.target.value)} placeholder="e.g. KO, EN" className={styles.input} />
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>Language</Label>
+                <Input
+                  value={form.language ?? ''}
+                  onChange={(e) => set('language', e.target.value)}
+                  placeholder="e.g. KO, EN"
+                  fullWidth
+                />
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Type <span className={styles.req}>*</span></label>
-            <select value={form.type} onChange={(e) => set('type', e.target.value as 'Managing' | 'Service')} className={styles.input}>
-              <option value="Service">Service</option>
-              <option value="Managing">Managing</option>
-            </select>
-          </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Type <span className="text-danger">*</span>
+                </Label>
+                <Select
+                  selectedKey={form.type}
+                  onSelectionChange={(key) => set('type', key as 'Managing' | 'Service')}
+                  fullWidth
+                >
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBox.Item id="Service" textValue="Service">
+                        Service
+                      </ListBox.Item>
+                      <ListBox.Item id="Managing" textValue="Managing">
+                        Managing
+                      </ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
 
-          <div className={styles.field}>
-            <label className={styles.label}>Sequencing Data Method <span className={styles.req}>*</span></label>
-            <select
-              value={form.sequencing_data_method}
-              onChange={(e) => set('sequencing_data_method', e.target.value as 'Remote' | 'Local')}
-              className={styles.input}
-            >
-              <option value="Remote">Remote</option>
-              <option value="Local">Local</option>
-            </select>
-          </div>
-        </div>
+              <div className="flex flex-col gap-1.5">
+                <Label>
+                  Sequencing Data Method <span className="text-danger">*</span>
+                </Label>
+                <Select
+                  selectedKey={form.sequencing_data_method}
+                  onSelectionChange={(key) =>
+                    set('sequencing_data_method', key as 'Remote' | 'Local')
+                  }
+                  fullWidth
+                >
+                  <Select.Trigger>
+                    <Select.Value />
+                    <Select.Indicator />
+                  </Select.Trigger>
+                  <Select.Popover>
+                    <ListBox>
+                      <ListBox.Item id="Remote" textValue="Remote">
+                        Remote
+                      </ListBox.Item>
+                      <ListBox.Item id="Local" textValue="Local">
+                        Local
+                      </ListBox.Item>
+                    </ListBox>
+                  </Select.Popover>
+                </Select>
+              </div>
+            </div>
 
-        <div className={styles.toggleRow}>
-          <Toggle
-            label="Is Managing Hospitals"
-            checked={form.is_managing_hospitals ?? false}
-            onChange={(v) => set('is_managing_hospitals', v)}
-          />
-          <Toggle
-            label="Auto Approve Orders"
-            checked={form.auto_approve_orders ?? false}
-            onChange={(v) => set('auto_approve_orders', v)}
-          />
-          <Toggle
-            label="Sign Report"
-            checked={form.sign_report ?? false}
-            onChange={(v) => set('sign_report', v)}
-          />
-        </div>
+            <div className="flex flex-col gap-4">
+              <Switch
+                isSelected={form.is_managing_hospitals ?? false}
+                onChange={(v) => set('is_managing_hospitals', v)}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  Is Managing Hospitals
+                </Switch.Content>
+              </Switch>
+              <Switch
+                isSelected={form.auto_approve_orders ?? false}
+                onChange={(v) => set('auto_approve_orders', v)}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  Auto Approve Orders
+                </Switch.Content>
+              </Switch>
+              <Switch
+                isSelected={form.sign_report ?? false}
+                onChange={(v) => set('sign_report', v)}
+              >
+                <Switch.Content>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                  Sign Report
+                </Switch.Content>
+              </Switch>
+            </div>
 
-        {availableServices.length > 0 && (
-          <div className={styles.field}>
-            <label className={styles.label}>Allowed Services</label>
-            <p className={styles.hint}>Leave empty to allow all services.</p>
-            <MultiSelect
-              options={availableServices}
-              selected={form.service_codes ?? []}
-              onChange={(v) => set('service_codes', v)}
-            />
-          </div>
-        )}
+            {availableServices.length > 0 && (
+              <div>
+                <Label>Allowed Services</Label>
+                <p className="mt-1 text-xs text-muted">Leave empty to allow all services.</p>
+                <ServiceCheckboxGroup
+                  options={availableServices}
+                  selected={form.service_codes ?? []}
+                  onChange={(v) => set('service_codes', v)}
+                />
+              </div>
+            )}
 
-        {error && <p className={styles.error}>{error}</p>}
+            {error && <p className="text-sm text-danger">{error}</p>}
 
-        <div className={styles.actions}>
-          <Button type="submit" variant="primary" loading={saving}>
-            {isNew ? 'Create Client' : 'Save Changes'}
-          </Button>
-          <Button type="button" variant="ghost" onClick={() => router.push('/admin/clients')}>
-            Cancel
-          </Button>
-        </div>
-      </form>
+            <div className="flex gap-2">
+              <Button type="submit" variant="primary" isDisabled={saving}>
+                {saving ? 'Saving…' : 'Save Changes'}
+              </Button>
+              <Button type="button" variant="ghost" onPress={() => router.push('/admin/clients')}>
+                Cancel
+              </Button>
+            </div>
+          </form>
+        </Card.Content>
+      </Card>
     </div>
   );
 }

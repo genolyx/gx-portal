@@ -1,6 +1,7 @@
 'use client';
 
 import { useEffect, useState } from 'react';
+import { Input, Table } from '@heroui/react';
 import { useReviewStore } from '../../../lib/store/reviewStore';
 import type { GeneKnowledge } from '@gx-portal/types';
 
@@ -12,7 +13,6 @@ export function GeneDatabase() {
   const variants = reviewData?.variants ?? [];
   const uniqueGenes = [...new Set(variants.map((v) => v.gene).filter(Boolean))].sort();
 
-  // Build a simple inline knowledge base from variant data already loaded
   useEffect(() => {
     const map: Record<string, GeneKnowledge> = {};
     variants.forEach((v) => {
@@ -36,44 +36,54 @@ export function GeneDatabase() {
 
   return (
     <div>
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
-        <input
+      <div className="mb-3 flex flex-wrap items-center gap-2">
+        <Input
           placeholder="Search gene or disorder…"
           value={search}
           onChange={(e) => setSearch(e.target.value)}
-          style={{ padding: '6px 10px', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border)', background: 'var(--bg-surface)', color: 'var(--text-primary)', fontSize: 13, minWidth: 260 }}
+          className="min-w-[260px]"
+          aria-label="Search genes"
         />
-        <span style={{ fontSize: 12, color: 'var(--text-muted)', alignSelf: 'center' }}>
+        <span className="self-center text-xs text-muted">
           {filtered.length} / {uniqueGenes.length} genes in this order
         </span>
       </div>
 
       {filtered.length === 0 ? (
-        <p style={{ padding: 32, textAlign: 'center', color: 'var(--text-muted)' }}>No genes found.</p>
+        <p className="py-8 text-center text-muted">No genes found.</p>
       ) : (
-        <div style={{ background: 'var(--bg-surface)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', overflow: 'auto' }}>
-          <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 12 }}>
-            <thead>
-              <tr>
-                {['Gene', 'Disorder / Disease', 'Inheritance', 'Notes'].map((h) => (
-                  <th key={h} style={{ padding: '6px 12px', borderBottom: '1px solid var(--border)', background: 'var(--bg-elevated)', textAlign: 'left', fontSize: 10, textTransform: 'uppercase', letterSpacing: '0.04em', color: 'var(--text-muted)' }}>{h}</th>
+        <Table>
+          <Table.ScrollContainer>
+            <Table.Content aria-label="Gene knowledge">
+              <Table.Header>
+                <Table.Column isRowHeader>Gene</Table.Column>
+                <Table.Column>Disorder / Disease</Table.Column>
+                <Table.Column>Inheritance</Table.Column>
+                <Table.Column>Notes</Table.Column>
+              </Table.Header>
+              <Table.Body>
+                {filtered.map((g) => (
+                  <Table.Row key={g.gene}>
+                    <Table.Cell>
+                      <span className="text-xs font-bold">{g.gene}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="block max-w-xs truncate text-xs" title={g.disorder ?? ''}>
+                        {g.disorder || <span className="text-muted">—</span>}
+                      </span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs">{g.inheritance || <span className="text-muted">—</span>}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-xs text-muted">{g.notes ?? g.function_summary ?? '—'}</span>
+                    </Table.Cell>
+                  </Table.Row>
                 ))}
-              </tr>
-            </thead>
-            <tbody>
-              {filtered.map((g) => (
-                <tr key={g.gene} style={{ borderBottom: '1px solid var(--border)' }}>
-                  <td style={{ padding: '6px 12px', fontWeight: 700 }}>{g.gene}</td>
-                  <td style={{ padding: '6px 12px', maxWidth: 320, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }} title={g.disorder ?? ''}>
-                    {g.disorder || <span style={{ color: 'var(--text-muted)' }}>—</span>}
-                  </td>
-                  <td style={{ padding: '6px 12px' }}>{g.inheritance || <span style={{ color: 'var(--text-muted)' }}>—</span>}</td>
-                  <td style={{ padding: '6px 12px', color: 'var(--text-muted)' }}>{g.notes ?? g.function_summary ?? '—'}</td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
       )}
     </div>
   );

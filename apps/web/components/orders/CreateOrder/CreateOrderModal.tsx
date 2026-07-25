@@ -1,15 +1,18 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
+import { Button, Input, Label, Modal, ToggleButton, ToggleButtonGroup, type Key } from '@heroui/react';
+import { LabeledCheckbox } from '../../ui/LabeledCheckbox';
 import { ordersApi } from '../../../lib/api/orders';
-import { catalogApi } from '../../../lib/api/catalog';
+import { catalogApi, type PanelPackage } from '../../../lib/api/catalog';
 import { populateOrderForm, resolveOrderServiceCode } from '../../../lib/order-form-populate';
 import { canEditOrderService } from '../../../lib/order-menu';
-import { Button } from '../../ui/Button';
+import { cn } from '../../../lib/utils';
+import { DatePickerField } from '../../ui/DatePickerField';
+import { SelectField } from '../../ui/SelectField';
 import { FileBrowseModal } from './FileBrowseModal';
 import { portalTodayIso } from '../../../lib/datetime';
 import type { Order } from '@gx-portal/types';
-import styles from './CreateOrder.module.css';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -203,8 +206,10 @@ function Field({ label, required, wide, children }: {
   label: string; required?: boolean; wide?: boolean; children: React.ReactNode;
 }) {
   return (
-    <div className={`${styles.field} ${wide ? styles.fieldWide : ''}`}>
-      <label className={styles.label}>{label}{required && <span className={styles.req}>*</span>}</label>
+    <div className={cn('flex flex-col gap-1', wide && 'col-span-full')}>
+      <Label className="text-[11px] font-semibold text-muted">
+        {label}{required && <span className="text-danger ml-0.5">*</span>}
+      </Label>
       {children}
     </div>
   );
@@ -214,8 +219,13 @@ function Inp({ value, onChange, placeholder, type = 'text' }: {
   value: string; onChange: (v: string) => void; placeholder?: string; type?: string;
 }) {
   return (
-    <input type={type} value={value} onChange={(e) => onChange(e.target.value)}
-      placeholder={placeholder} className={styles.input} />
+    <Input
+      type={type}
+      value={value}
+      onChange={(e) => onChange(e.target.value)}
+      placeholder={placeholder}
+      fullWidth
+    />
   );
 }
 
@@ -225,27 +235,37 @@ function Sel({ value, onChange, options, placeholder }: {
   placeholder?: string;
 }) {
   return (
-    <select value={value} onChange={(e) => onChange(e.target.value)} className={styles.input}>
-      {placeholder && <option value="">{placeholder}</option>}
-      {options.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
-    </select>
+    <SelectField
+      value={value}
+      onChange={onChange}
+      placeholder={placeholder}
+      options={options.map((o) => ({ id: o.value, label: o.label }))}
+    />
   );
+}
+
+function DateInp({ value, onChange }: { value: string; onChange: (v: string) => void }) {
+  return <DatePickerField value={value} onChange={onChange} />;
 }
 
 function Chk({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
   return (
-    <label className={styles.toggleLabel}>
-      <input type="checkbox" checked={value} onChange={(e) => onChange(e.target.checked)} /> {label}
-    </label>
+    <LabeledCheckbox isSelected={value} onChange={onChange}>
+      {label}
+    </LabeledCheckbox>
   );
 }
 
 function Sec({ title, desc, children }: { title?: string; desc?: string; children: React.ReactNode }) {
   return (
-    <div className={styles.section}>
-      {title && <h4 className={styles.sectionTitle}>{title}</h4>}
-      {desc && <p className={styles.sectionDesc}>{desc}</p>}
-      <div className={styles.grid}>{children}</div>
+    <div className="flex flex-col gap-3">
+      {title && (
+        <h4 className="text-[11px] font-bold uppercase tracking-wider text-muted border-b border-border pb-1.5 m-0">
+          {title}
+        </h4>
+      )}
+      {desc && <p className="text-xs text-muted m-0 leading-relaxed">{desc}</p>}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">{children}</div>
     </div>
   );
 }
@@ -438,38 +458,57 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   const saveLabel = initial?.mode === 'edit' ? 'Update order' : 'Save order';
 
   return (
-    <div className={styles.overlay} onClick={(e) => e.target === e.currentTarget && onClose()}>
-      <div className={styles.modal}>
-        {/* Header */}
-        <div className={styles.modalHeader}>
-          <h2 className={styles.modalTitle}>
-            {step === 'service' ? 'Create an Order' : formTitle}
-          </h2>
-          <button type="button" className={styles.closeBtn} onClick={onClose}>✕</button>
-        </div>
+    <>
+      <Modal isOpen onOpenChange={(open) => { if (!open) onClose(); }}>
+        <Modal.Backdrop>
+          <Modal.Container scroll="inside">
+            <Modal.Dialog className="w-full max-w-[900px] max-h-[90vh]">
+              <Modal.Header>
+                <Modal.Heading>
+                  {step === 'service' ? 'Create an Order' : formTitle}
+                </Modal.Heading>
+                <Modal.CloseTrigger />
+              </Modal.Header>
 
-        <div className={styles.modalBody}>
+              <Modal.Body>
           {/* ── Step 1: Service selection ── */}
           {step === 'service' && (
             <div>
-              <p className={styles.hint}>Select the service type:</p>
-              <div className={styles.serviceGrid}>
-                {SERVICES.map((s) => (
-                  <button key={s.code} type="button"
-                    className={`${styles.serviceCard} ${service === s.code ? styles.serviceCardActive : ''}`}
-                    onClick={() => setService(s.code)}>
-                    {s.label}
-                  </button>
-                ))}
+              <p className="text-sm text-muted mb-3">Select the service type:</p>
+              <div className="rounded-full bg-default p-0.5">
+                <ToggleButtonGroup
+                  aria-label="Service type"
+                  selectionMode="single"
+                  disallowEmptySelection
+                  isDetached
+                  fullWidth
+                  size="sm"
+                  selectedKeys={new Set([service])}
+                  onSelectionChange={(keys: Set<Key>) => {
+                    const next = [...keys][0] as ServiceCode | undefined;
+                    if (next) setService(next);
+                  }}
+                >
+                  {SERVICES.map((s) => (
+                    <ToggleButton
+                      key={s.code}
+                      id={s.code}
+                      variant="ghost"
+                      className="flex-1 px-2"
+                    >
+                      {s.label}
+                    </ToggleButton>
+                  ))}
+                </ToggleButtonGroup>
               </div>
             </div>
           )}
 
           {/* ── Step 2: Form ── */}
           {step === 'form' && (
-            <div className={styles.formBody}>
+            <div className="flex flex-col gap-6">
               {!isExome && (
-                <p className={styles.sectionDesc} style={{ marginTop: 0 }}>
+                <p className="text-xs text-muted m-0 leading-relaxed">
                   Clinical fields → <code>params.nipt</code>. <strong>Save order</strong> stores a draft;
                   queue from the list <strong>⋯ → Submit</strong>.
                 </p>
@@ -479,11 +518,11 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               <Sec title={isExome ? 'Order / Sample' : undefined}>
                 <Field label="Order ID" wide>
                   {initial?.mode === 'edit' ? (
-                    <p className={styles.sectionDesc} style={{ margin: 0 }}>
+                    <p className="text-xs text-muted m-0">
                       <code>{initial.order.order_id}</code>
                     </p>
                   ) : (
-                    <p className={styles.sectionDesc} style={{ margin: 0 }}>
+                    <p className="text-xs text-muted m-0">
                       Assigned automatically on save
                       {isExome ? ' (e.g. CSGX26070001).' : ' (e.g. SNGX26070001).'}
                     </p>
@@ -503,29 +542,26 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               {isExome && (
                 <Sec title="Pipeline Options">
                   <Field label="Primary (interpretation)" required>
-                    <select
+                    <SelectField
                       value={wesPanel}
-                      onChange={(v) => { setWesPanel(v.target.value); setC('wes_panel_id', v.target.value); }}
-                      className={styles.input}
-                    >
-                      <option value="">— Select interpretation panel (required) —</option>
-                      {Object.entries(panelsByCategory).map(([cat, ps]) => (
-                        <optgroup key={cat} label={CATEGORY_LABELS[cat] ?? cat}>
-                          {ps.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.label ?? p.id}{p.gene_count ? ` (~${p.gene_count} genes)` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      ))}
-                    </select>
+                      onChange={(v) => { setWesPanel(v); setC('wes_panel_id', v); }}
+                      placeholder="— Select interpretation panel (required) —"
+                      groups={Object.entries(panelsByCategory).map(([cat, ps]) => ({
+                        id: cat,
+                        label: CATEGORY_LABELS[cat] ?? cat,
+                        options: ps.map((p) => ({
+                          id: p.id,
+                          label: `${p.label ?? p.id}${p.gene_count ? ` (~${p.gene_count} genes)` : ''}`,
+                        })),
+                      }))}
+                    />
                   </Field>
                   <Field label="Extra interpretation genes" wide>
                     <Inp value={interpretationGenesExtra} onChange={setInterpretationGenesExtra}
                       placeholder="Comma-separated gene symbols (optional)" />
                   </Field>
                   <Field label="Flags">
-                    <div className={styles.flagsGroup}>
+                    <div className="flex flex-col gap-2">
                       <Chk value={carrier.include_pgx} onChange={(v) => setC('include_pgx', v)} label="Include PGx" />
                       {service === 'health_screening' && (
                         <Chk value={includeApoePgx} onChange={setIncludeApoePgx} label="Include APOE PGx" />
@@ -546,7 +582,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                   <Inp value={carrier.patient_name} onChange={(v) => setC('patient_name', v)} placeholder="Full name" />
                 </Field>
                 <Field label="Date of birth">
-                  <Inp type="date" value={carrier.patient_birth} onChange={(v) => setC('patient_birth', v)} />
+                  <DateInp value={carrier.patient_birth} onChange={(v) => setC('patient_birth', v)} />
                 </Field>
                 <Field label="Gender">
                   <Sel value={carrier.patient_gender} onChange={(v) => setC('patient_gender', v)}
@@ -564,7 +600,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                     options={[{ value: 'Yes', label: 'Yes' }, { value: 'No', label: 'No' }]} />
                 </Field>
                 <Field label="Sample collection date">
-                  <Inp type="date" value={carrier.sample_collection_date}
+                  <DateInp value={carrier.sample_collection_date}
                     onChange={(v) => setC('sample_collection_date', v)} />
                 </Field>
                 <Field label="Specimen type">
@@ -602,7 +638,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                   <Inp value={nipt.patient_name} onChange={(v) => setN('patient_name', v)} />
                 </Field>
                 <Field label="Patient Birth" required>
-                  <Inp type="date" value={nipt.patient_birth} onChange={(v) => setN('patient_birth', v)} />
+                  <DateInp value={nipt.patient_birth} onChange={(v) => setN('patient_birth', v)} />
                 </Field>
                 <Field label="Patient Gender" required>
                   <Sel value={nipt.patient_gender} onChange={(v) => setN('patient_gender', v)}
@@ -629,7 +665,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                     options={NIPT_PREGNANCY_TYPES.map((t) => ({ value: t, label: t }))} />
                 </Field>
                 <Field label="Estimated Delivery Date (EDD)" required>
-                  <Inp type="date" value={nipt.estimated_delivery_date}
+                  <DateInp value={nipt.estimated_delivery_date}
                     onChange={(v) => setN('estimated_delivery_date', v)} />
                 </Field>
               </Sec>
@@ -655,11 +691,11 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
               <Sec title="Sample and Test Details">
                 <Field label="Sample Collection Date" required>
-                  <Inp type="date" value={nipt.sample_collection_date}
+                  <DateInp value={nipt.sample_collection_date}
                     onChange={(v) => setN('sample_collection_date', v)} />
                 </Field>
                 <Field label="Receipt Date">
-                  <Inp type="date" value={nipt.receipt_date} onChange={(v) => setN('receipt_date', v)} />
+                  <DateInp value={nipt.receipt_date} onChange={(v) => setN('receipt_date', v)} />
                 </Field>
                 <Field label="Package Code" required>
                   <Sel value={nipt.package_code} onChange={(v) => setN('package_code', v)}
@@ -719,8 +755,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                 desc={isExome
                   ? 'Use Browse FASTQ (R1+R2)… on the daemon server to pick two files (R1 + R2). Paths are editable below. Roots depend on service (SGNIPT_FASTQ_DIR / CARRIER_SCREENING_FASTQ_DIR in daemon .env).'
                   : 'Use Browse FASTQ (R1+R2)… on the daemon server to pick two files (Ctrl+click up to two, or click one then Shift+click another if only those two lie in range). Paths still editable below. Roots: Single-gene NIPT / Carrier Screening (see SGNIPT_FASTQ_DIR / CARRIER_SCREENING_FASTQ_DIR in daemon .env).'}>
-                <div className={styles.fieldWide}>
-                  <Button size="sm" variant="ghost" onClick={() => setBrowse('fastq')}>
+                <div className="col-span-full">
+                  <Button size="sm" variant="ghost" onPress={() => setBrowse('fastq')}>
                     Browse FASTQ (R1+R2)…
                   </Button>
                 </div>
@@ -736,13 +772,13 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               {isExome && (
                 <Sec title="BAM Direct Input (optional — skips alignment)"
                   desc="Pre-aligned, sorted, duplicate-marked BAM (--input-bam mode). FASTQ → alignment → MarkDup steps are skipped. When specified, FASTQ fields are ignored.">
-                  <div className={styles.fieldWide}>
-                    <div className={styles.inlineRow}>
-                      <Button size="sm" variant="ghost" onClick={() => setBrowse('bam')}>Browse BAM…</Button>
+                  <div className="col-span-full">
+                    <div className="flex flex-wrap gap-2 items-center">
+                      <Button size="sm" variant="ghost" onPress={() => setBrowse('bam')}>Browse BAM…</Button>
                       <Inp value={inputBam} onChange={setInputBam}
                         placeholder="e.g. /data/gx-exome/data/test/sim_bam/carrier_spiked_NA12878.bam" />
                       {inputBam && (
-                        <Button size="sm" variant="ghost" onClick={() => setInputBam('')}>Clear</Button>
+                        <Button size="sm" variant="ghost" onPress={() => setInputBam('')}>Clear</Button>
                       )}
                     </div>
                   </div>
@@ -754,12 +790,12 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                 desc={isExome
                   ? 'BAM samplesheet CSV starts the pipeline from BAM instead of FASTQ. CSV format: sample_id,bam,bai. If not specified, the pipeline runs in FASTQ mode.'
                   : 'Specifying a BAM samplesheet CSV starts the pipeline from BAM instead of FASTQ (--input-bam mode). CSV format: sample_id,bam,bai — paths must be container-internal paths (/Work/SgNIPT/data/…) and files must reside under the data root (SGNIPT_WORK_ROOT/data/). If not specified, the pipeline runs in FASTQ mode.'}>
-                <div className={styles.fieldWide}>
-                  <div className={styles.inlineRow}>
-                    <Button size="sm" variant="ghost" onClick={() => setBrowse('bam-csv')}>Browse BAM CSV…</Button>
+                <div className="col-span-full">
+                  <div className="flex flex-wrap gap-2 items-center">
+                    <Button size="sm" variant="ghost" onPress={() => setBrowse('bam-csv')}>Browse BAM CSV…</Button>
                     <Inp value={inputBamCsv} onChange={setInputBamCsv} placeholder="Select or enter absolute path" />
                     {inputBamCsv && (
-                      <Button size="sm" variant="ghost" onClick={() => setInputBamCsv('')}>Clear</Button>
+                      <Button size="sm" variant="ghost" onPress={() => setInputBamCsv('')}>Clear</Button>
                     )}
                   </div>
                 </div>
@@ -801,31 +837,35 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
             </div>
           )}
 
-          {error && <p className={styles.error}>{error}</p>}
-        </div>
+          {error && (
+            <p className="text-sm text-danger mt-3 px-3 py-2 rounded-md bg-surface-secondary">{error}</p>
+          )}
+              </Modal.Body>
 
-        {/* Footer */}
-        <div className={styles.modalFooter}>
+              <Modal.Footer>
           {step === 'service' ? (
             <>
-              <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button variant="primary" size="sm" onClick={() => setStep('form')}>
+              <Button variant="ghost" size="sm" onPress={onClose}>Cancel</Button>
+              <Button variant="primary" size="sm" onPress={() => setStep('form')}>
                 Next — {SERVICES.find((s) => s.code === service)?.label}
               </Button>
             </>
           ) : (
             <>
               {!initial && (
-                <Button variant="ghost" size="sm" onClick={() => setStep('service')}>← Back</Button>
+                <Button variant="ghost" size="sm" onPress={() => setStep('service')}>← Back</Button>
               )}
-              <Button variant="ghost" size="sm" onClick={onClose}>Cancel</Button>
-              <Button variant="primary" size="sm" loading={saving} onClick={handleSubmit}>
-                {saveLabel}
+              <Button variant="ghost" size="sm" onPress={onClose}>Cancel</Button>
+              <Button variant="primary" size="sm" isDisabled={saving} onPress={handleSubmit}>
+                {saving ? 'Saving…' : saveLabel}
               </Button>
             </>
           )}
-        </div>
-      </div>
+              </Modal.Footer>
+            </Modal.Dialog>
+          </Modal.Container>
+        </Modal.Backdrop>
+      </Modal>
 
       {browse === 'fastq' && (
         <FileBrowseModal
@@ -860,6 +900,6 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
           onSelect={(paths) => setInputBamCsv(paths[0] ?? '')}
         />
       )}
-    </div>
+    </>
   );
 }

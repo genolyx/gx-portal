@@ -1,45 +1,87 @@
 'use client';
 
-import Link from 'next/link';
 import { usePathname, useRouter } from 'next/navigation';
 import { useEffect, useState } from 'react';
+import {
+  Activity,
+  BookOpen,
+  Building2,
+  ClipboardList,
+  FlaskConical,
+  Layers,
+  LayoutDashboard,
+  LayoutGrid,
+  LogOut,
+  ScanSearch,
+  Settings,
+  Users,
+  type LucideIcon,
+} from 'lucide-react';
+import { Button, Tooltip } from '@heroui/react';
 import type { UserProfile } from '@gx-portal/types';
-import { cn } from '../../lib/utils';
 import { ThemeToggle, FontSizeToggle } from './ThemeToggle';
+import { Sidebar } from './Sidebar';
 import { authApi } from '../../lib/api/auth';
 import { systemApi } from '../../lib/api/system';
 import { activeDaemonUrl, DAEMON_URL_KEY, resolveDaemonPreset } from '../../lib/daemon-presets';
-import { Button } from '../ui/Button';
 
-type NavItem =
-  | { href: string; label: string; icon: string; group?: string; adminOnly?: boolean; divider?: never }
-  | { divider: true; href?: never; label?: never; icon?: never };
+type NavLink = {
+  href: string;
+  label: string;
+  icon: LucideIcon;
+  adminOnly?: boolean;
+};
 
-const NAV_ITEMS: NavItem[] = [
-  { href: '/dashboard',    label: 'Dashboard',    icon: '▦' },
-  { href: '/orders',       label: 'Orders',       icon: '⊞' },
-  { href: '/review',       label: 'Review',       icon: '◈' },
-  { divider: true },
-  { href: '/variant-sets', label: 'Variant Sets', icon: '⊕' },
-  { href: '/literature',   label: 'Literature',   icon: '📚' },
-  { href: '/panels',       label: 'Panels',       icon: '⊟' },
-  { divider: true },
-  { href: '/admin/clients', label: 'Clients', icon: '⊡', group: 'Admin' },
-  { href: '/admin/labs',    label: 'Labs',    icon: '⊜', group: 'Admin' },
-  { href: '/admin/users',   label: 'Users',   icon: '⊛', group: 'Admin' },
-  { divider: true },
-  { href: '/config', label: 'Config', icon: '⚙' },
-  { href: '/admin/resources', label: 'Resource Monitor', icon: '📊', adminOnly: true },
+type NavGroup = {
+  label?: string;
+  items: NavLink[];
+};
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    items: [
+      { href: '/dashboard', label: 'Dashboard', icon: LayoutDashboard },
+      { href: '/orders', label: 'Orders', icon: ClipboardList },
+      { href: '/review', label: 'Review', icon: ScanSearch },
+    ],
+  },
+  {
+    label: 'Catalog',
+    items: [
+      { href: '/variant-sets', label: 'Variant Sets', icon: Layers },
+      { href: '/literature', label: 'Literature', icon: BookOpen },
+      { href: '/panels', label: 'Panels', icon: LayoutGrid },
+    ],
+  },
+  {
+    label: 'Admin',
+    items: [
+      { href: '/admin/clients', label: 'Clients', icon: Building2 },
+      { href: '/admin/labs', label: 'Labs', icon: FlaskConical },
+      { href: '/admin/users', label: 'Users', icon: Users },
+    ],
+  },
+  {
+    label: 'System',
+    items: [
+      { href: '/config', label: 'Config', icon: Settings },
+      { href: '/admin/resources', label: 'Resource Monitor', icon: Activity, adminOnly: true },
+    ],
+  },
 ];
+
+function userLabel(user: UserProfile | null): string {
+  return user?.display_name || user?.username || user?.email || '…';
+}
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const router = useRouter();
   const [daemonOk, setDaemonOk] = useState<boolean | null>(null);
   const [daemonLabel, setDaemonLabel] = useState<string>('gx-daemon');
+  const [daemonUrl, setDaemonUrl] = useState<string>('');
   const [user, setUser] = useState<UserProfile | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
-  let shownAdmin = false;
 
   useEffect(() => {
     authApi.me().then(setUser).catch(() => setUser(null));
@@ -49,10 +91,13 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     const savedUrl = localStorage.getItem(DAEMON_URL_KEY);
     systemApi.getConfig().then((cfg) => {
       const url = activeDaemonUrl(savedUrl, cfg.daemonUrl);
+      setDaemonUrl(url);
       const preset = resolveDaemonPreset(url);
       if (preset) setDaemonLabel(preset.label);
     }).catch(() => {
-      const preset = resolveDaemonPreset(savedUrl ?? '');
+      const url = savedUrl ?? '';
+      setDaemonUrl(url);
+      const preset = resolveDaemonPreset(url);
       if (preset) setDaemonLabel(preset.label);
     });
   }, []);
@@ -74,109 +119,104 @@ export function AppShell({ children }: { children: React.ReactNode }) {
     try {
       await authApi.logout();
     } catch {
-      // Still redirect — cookie may already be cleared or network failed.
+      // Still redirect
     }
     router.push('/login');
     router.refresh();
   };
 
-  return (
-    <div className="flex h-screen overflow-hidden bg-gx-bg">
-      {/* Sidebar */}
-      <aside className="w-[220px] flex-none bg-gx-surface border-r border-gx-border flex flex-col overflow-y-auto">
-        {/* Logo + daemon status */}
-        <div className="px-4 pt-5 pb-3 border-b border-gx-border">
-          <div className="flex items-center gap-2.5 mb-2">
-            <span className="text-[22px] text-gx-accent">⬡</span>
-            <span className="font-bold text-base text-gx-text">Gx-Portal</span>
-          </div>
-          {/* Daemon status pill */}
-          <div
-            className={cn(
-              'inline-flex items-center gap-1.5 px-2 py-0.5 rounded-full text-[11px] font-medium transition-colors',
-              daemonOk === null  && 'bg-gx-elevated text-gx-muted',
-              daemonOk === true  && 'bg-gx-success/10 text-gx-success',
-              daemonOk === false && 'bg-gx-danger/10  text-gx-danger',
-            )}
-          >
-            <span
-              className={cn(
-                'w-1.5 h-1.5 rounded-full flex-none',
-                daemonOk === null  && 'bg-gx-muted',
-                daemonOk === true  && 'bg-gx-success',
-                daemonOk === false && 'bg-gx-danger',
-              )}
-            />
-            {daemonOk === null
-              ? 'checking…'
-              : `${daemonLabel} ${daemonOk ? 'connected' : 'disconnected'}`}
-          </div>
-        </div>
+  const daemonStatus =
+    daemonOk === null ? 'pending' : daemonOk ? 'ok' : 'error';
+  const daemonStateLabel =
+    daemonOk === null ? 'checking…' : daemonOk ? 'connected' : 'disconnected';
+  const daemonAriaLabel = `${daemonLabel}: ${daemonStateLabel}`;
 
-        {/* Navigation */}
-        <nav className="flex flex-col p-3 gap-0.5 flex-1">
-          {NAV_ITEMS.map((item, i) => {
-            if ('divider' in item && item.divider) {
-              return <div key={`d-${i}`} className="h-px bg-gx-border my-2" />;
-            }
-            const nav = item as { href: string; label: string; icon: string; group?: string; adminOnly?: boolean };
-            if (nav.adminOnly && user?.role !== 'admin') return null;
-            const active = pathname?.startsWith(nav.href) ?? false;
-            const showGroup = nav.group && !shownAdmin;
-            if (nav.group) shownAdmin = true;
+  return (
+    <Sidebar.Provider activeHref={pathname}>
+      <Sidebar>
+        <Sidebar.Header>
+          <div className="sidebar__brand">
+            <span className="sidebar__brand-mark" aria-hidden>⬡</span>
+            <span className="sidebar__brand-title">Gx-Portal</span>
+            <Tooltip delay={200}>
+              <Tooltip.Trigger
+                className="sidebar__status-dot"
+                data-status={daemonStatus}
+                aria-label={daemonAriaLabel}
+                role="status"
+              />
+              <Tooltip.Content showArrow placement="bottom">
+                <div className="flex flex-col gap-0.5">
+                  <span className="font-medium">{daemonLabel}</span>
+                  {daemonUrl ? (
+                    <span className="text-xs opacity-80 font-mono">{daemonUrl}</span>
+                  ) : null}
+                  <span className="text-xs opacity-80">{daemonStateLabel}</span>
+                </div>
+              </Tooltip.Content>
+            </Tooltip>
+          </div>
+        </Sidebar.Header>
+
+        <Sidebar.Content>
+          {NAV_GROUPS.map((group) => {
+            const items = group.items.filter(
+              (item) => !item.adminOnly || user?.role === 'admin',
+            );
+            if (items.length === 0) return null;
             return (
-              <div key={nav.href}>
-                {showGroup && (
-                  <p className="text-[10px] font-bold uppercase tracking-widest text-gx-muted px-3 pt-2 pb-1">
-                    {nav.group}
-                  </p>
+              <Sidebar.Group key={group.label ?? 'main'}>
+                {group.label && (
+                  <Sidebar.GroupLabel>{group.label}</Sidebar.GroupLabel>
                 )}
-                <Link
-                  href={nav.href}
-                  className={cn(
-                    'flex items-center gap-2.5 px-3 py-2 rounded-gx text-sm font-medium transition-colors',
-                    active
-                      ? 'bg-gx-accent-dim text-gx-accent'
-                      : 'text-gx-text-2 hover:bg-gx-elevated hover:text-gx-text',
-                  )}
-                >
-                  <span className="w-5 text-center text-base">{nav.icon}</span>
-                  <span>{nav.label}</span>
-                </Link>
-              </div>
+                <Sidebar.Menu>
+                  {items.map((item) => {
+                    const Icon = item.icon;
+                    return (
+                      <Sidebar.MenuItem
+                        key={item.href}
+                        href={item.href}
+                        icon={<Icon size={18} strokeWidth={1.85} aria-hidden />}
+                      >
+                        {item.label}
+                      </Sidebar.MenuItem>
+                    );
+                  })}
+                </Sidebar.Menu>
+              </Sidebar.Group>
             );
           })}
-        </nav>
+        </Sidebar.Content>
 
-        {/* Footer — font size, theme, account */}
-        <div className="p-3 border-t border-gx-border flex flex-col gap-3">
+        <Sidebar.Footer>
           <FontSizeToggle />
-          <div className="h-px bg-gx-border" />
           <ThemeToggle />
-          <div className="h-px bg-gx-border" />
-          <div className="flex flex-col gap-2 px-1">
+          <Sidebar.Separator />
+          <div className="sidebar__user">
             <p
-              className="text-xs text-gx-text-2 truncate"
+              className="sidebar__user-name"
               title={user?.email ?? user?.username ?? undefined}
             >
-              {user?.email ?? user?.username ?? '…'}
+              {userLabel(user)}
             </p>
-            <Button
-              type="button"
-              variant="ghost"
-              size="sm"
-              loading={loggingOut}
-              className="w-full justify-start px-2 text-gx-text-2 hover:text-gx-text"
-              onClick={handleLogout}
-            >
-              Log-out
-            </Button>
+            {user?.role && <p className="sidebar__user-role">{user.role}</p>}
           </div>
-        </div>
-      </aside>
+          <Button
+            type="button"
+            variant="danger-soft"
+            size="sm"
+            isDisabled={loggingOut}
+            fullWidth
+            onPress={handleLogout}
+            className="justify-center gap-2"
+          >
+            <LogOut size={15} strokeWidth={2} aria-hidden />
+            {loggingOut ? 'Logging out…' : 'Log out'}
+          </Button>
+        </Sidebar.Footer>
+      </Sidebar>
 
-      {/* Main content */}
-      <main className="flex-1 overflow-y-auto px-8 py-7">{children}</main>
-    </div>
+      <Sidebar.Main>{children}</Sidebar.Main>
+    </Sidebar.Provider>
   );
 }

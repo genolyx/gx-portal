@@ -1,13 +1,12 @@
 'use client';
 
 import { useCallback, useEffect, useState } from 'react';
-import Link from 'next/link';
+import { Card, Chip, EmptyState, Link, Spinner, Table } from '@heroui/react';
 import { systemApi } from '../../lib/api/system';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { cn } from '../../lib/utils';
 import { PageHeader } from '../ui/PageHeader';
-import { Card, CardContent, CardTitle } from '../ui/Card';
-import { OrderStatusBadge } from '../ui/Badge';
+import { OrderStatusBadge } from '../ui/OrderStatusBadge';
 
 type DashboardBucket = 'queued' | 'running' | 'completed' | 'failed';
 
@@ -29,23 +28,17 @@ const BUCKET_CARDS: {
   key: DashboardBucket;
   label: string;
   statKey: keyof QueueSummary;
-  accent?: 'ok' | 'err';
+  chipColor: 'default' | 'accent' | 'success' | 'danger' | 'warning';
 }[] = [
-  { key: 'queued',    label: 'Queued',    statKey: 'total_queued' },
-  { key: 'running',   label: 'Running',   statKey: 'total_running' },
-  { key: 'completed', label: 'Completed', statKey: 'total_completed', accent: 'ok' },
-  { key: 'failed',    label: 'Failed',    statKey: 'total_failed', accent: 'err' },
+  { key: 'queued', label: 'Queued', statKey: 'total_queued', chipColor: 'warning' },
+  { key: 'running', label: 'Running', statKey: 'total_running', chipColor: 'accent' },
+  { key: 'completed', label: 'Completed', statKey: 'total_completed', chipColor: 'success' },
+  { key: 'failed', label: 'Failed', statKey: 'total_failed', chipColor: 'danger' },
 ];
-
-const BUCKET_HEADLINE: Record<DashboardBucket, string> = {
-  queued: 'Queued',
-  running: 'Running',
-  completed: 'Completed',
-  failed: 'Failed',
-};
 
 export function DashboardClient() {
   const [queue, setQueue] = useState<QueueSummary | null>(null);
+  const [queueLoaded, setQueueLoaded] = useState(false);
   const [activeBucket, setActiveBucket] = useState<DashboardBucket | null>(null);
   const [bucketOrders, setBucketOrders] = useState<BucketOrder[]>([]);
   const [bucketTotal, setBucketTotal] = useState(0);
@@ -53,7 +46,11 @@ export function DashboardClient() {
   const [bucketError, setBucketError] = useState<string | null>(null);
 
   const loadQueue = useCallback(() => {
-    systemApi.queue().then((q) => setQueue(q as QueueSummary)).catch(() => setQueue(null));
+    systemApi
+      .queue()
+      .then((q) => setQueue(q as QueueSummary))
+      .catch(() => setQueue(null))
+      .finally(() => setQueueLoaded(true));
   }, []);
 
   useEffect(() => {
@@ -83,125 +80,130 @@ export function DashboardClient() {
     }
   }, []);
 
-  const handleBucketClick = (bucket: DashboardBucket) => {
-    void loadBucket(bucket);
-  };
-
   return (
     <div>
-      <PageHeader title="Dashboard" description="Real-time analysis queue and system status." />
+      <PageHeader
+        title="Dashboard"
+        description="Real-time analysis queue and system status."
+      />
 
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-4">
-        {BUCKET_CARDS.map(({ key, label, statKey, accent }) => {
+      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+        {BUCKET_CARDS.map(({ key, label, statKey, chipColor }) => {
           const value = queue?.[statKey] ?? 0;
           const active = activeBucket === key;
           return (
-            <button
+            <Card
               key={key}
-              type="button"
+              variant={active ? 'secondary' : 'default'}
+              className={cn(
+                'cursor-pointer transition-colors select-none',
+                active && 'ring-1 ring-accent/40',
+              )}
+              role="button"
+              tabIndex={0}
               aria-pressed={active}
-              onClick={() => handleBucketClick(key)}
-              className="text-left w-full"
+              onClick={() => void loadBucket(key)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' || e.key === ' ') {
+                  e.preventDefault();
+                  void loadBucket(key);
+                }
+              }}
             >
-              <Card
-                className={cn(
-                  'transition-shadow cursor-pointer hover:border-gx-accent/40',
-                  active && 'ring-2 ring-gx-accent border-gx-accent',
-                  accent === 'ok' && 'border-gx-success/30',
-                  accent === 'err' && 'border-gx-danger/30',
-                )}
-              >
-                <CardContent className="pt-5">
-                  <p className={cn(
-                    'text-3xl font-bold',
-                    accent === 'ok' && 'text-gx-success',
-                    accent === 'err' && 'text-gx-danger',
-                    !accent && 'text-gx-text',
-                  )}>
-                    {value}
-                  </p>
-                  <CardTitle className="mt-1 normal-case tracking-normal text-xs font-medium text-gx-muted">
-                    {label}
-                  </CardTitle>
-                </CardContent>
-              </Card>
-            </button>
+              <Card.Header className="pb-0">
+                <Chip color={chipColor} size="sm" variant="soft">
+                  <Chip.Label>{label}</Chip.Label>
+                </Chip>
+              </Card.Header>
+              <Card.Content className="pt-3">
+                <p className="text-2xl font-normal tabular-nums tracking-tight leading-none text-foreground">
+                  {queueLoaded ? value : '—'}
+                </p>
+                <Card.Description className="mt-2">
+                  {active ? 'Showing orders below' : 'Click to view orders'}
+                </Card.Description>
+              </Card.Content>
+            </Card>
           );
         })}
       </div>
 
-      {!queue && (
-        <p className="text-sm text-gx-muted mt-4">No queue data available.</p>
+      {queueLoaded && !queue && (
+        <p className="text-sm text-muted mt-4">No queue data available.</p>
       )}
 
       {activeBucket && (
-        <section className="mt-6 rounded-gx border border-gx-border bg-gx-surface p-4">
-          <div className="flex flex-wrap items-baseline justify-between gap-2 mb-3">
-            <h3 className="text-sm font-bold text-gx-text">
-              {BUCKET_HEADLINE[activeBucket]}
-            </h3>
-            <p className="text-xs text-gx-muted">
+        <Card className="mt-6">
+          <Card.Header>
+            <Card.Title>
+              {BUCKET_CARDS.find((c) => c.key === activeBucket)?.label}
+            </Card.Title>
+            <Card.Description>
               {bucketLoading
                 ? 'Loading…'
                 : `${bucketTotal} order(s) · Order updated = last status change (KST)`}
-            </p>
-          </div>
-
-          {bucketError ? (
-            <p className="text-sm text-gx-danger py-4 text-center">{bucketError}</p>
-          ) : bucketLoading ? (
-            <p className="text-sm text-gx-muted py-4 text-center">Loading orders…</p>
-          ) : bucketOrders.length === 0 ? (
-            <p className="text-sm text-gx-muted py-4 text-center">No orders</p>
-          ) : (
-            <div className="overflow-x-auto rounded-gx border border-gx-border">
-              <table className="w-full text-sm border-collapse">
-                <thead className="bg-gx-elevated/60">
-                  <tr>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide border-b border-gx-border">
-                      Order ID
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide border-b border-gx-border">
-                      Status
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide border-b border-gx-border whitespace-nowrap">
-                      Order Updated
-                    </th>
-                    <th className="px-3 py-2 text-left text-xs font-semibold text-gx-text-2 uppercase tracking-wide border-b border-gx-border">
-                      Message
-                    </th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {bucketOrders.map((o) => (
-                    <tr
-                      key={o.order_id}
-                      className="hover:bg-gx-accent-dim transition-colors"
-                    >
-                      <td className="px-3 py-2 border-b border-gx-border">
-                        <Link
-                          href={`/orders/${encodeURIComponent(o.order_id)}`}
-                          className="font-mono text-xs text-gx-accent hover:underline"
-                        >
-                          {o.order_id}
-                        </Link>
-                      </td>
-                      <td className="px-3 py-2 border-b border-gx-border whitespace-nowrap">
-                        <OrderStatusBadge status={o.status} />
-                      </td>
-                      <td className="px-3 py-2 border-b border-gx-border whitespace-nowrap text-xs text-gx-text-2">
-                        {formatPortalDateTime(o.order_updated)}
-                      </td>
-                      <td className="px-3 py-2 border-b border-gx-border text-xs text-gx-text-2 max-w-md truncate" title={o.message}>
-                        {o.message || '—'}
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          )}
-        </section>
+            </Card.Description>
+          </Card.Header>
+          <Card.Content>
+            {bucketError ? (
+              <EmptyState className="py-8">
+                <p className="text-sm text-danger">{bucketError}</p>
+              </EmptyState>
+            ) : bucketLoading ? (
+              <div className="flex items-center justify-center gap-2 py-10 text-muted">
+                <Spinner size="md" color="current" />
+                <span className="text-sm">Loading orders…</span>
+              </div>
+            ) : bucketOrders.length === 0 ? (
+              <EmptyState className="py-8">
+                <p className="text-sm text-muted">No orders in this bucket.</p>
+              </EmptyState>
+            ) : (
+              <Table>
+                <Table.ScrollContainer>
+                  <Table.Content aria-label={`${activeBucket} orders`}>
+                    <Table.Header>
+                      <Table.Column isRowHeader>Order ID</Table.Column>
+                      <Table.Column>Status</Table.Column>
+                      <Table.Column>Order Updated</Table.Column>
+                      <Table.Column>Message</Table.Column>
+                    </Table.Header>
+                    <Table.Body>
+                      {bucketOrders.map((o) => (
+                        <Table.Row key={o.order_id}>
+                          <Table.Cell>
+                            <Link
+                              href={`/orders/${encodeURIComponent(o.order_id)}`}
+                              className="font-mono text-xs"
+                            >
+                              {o.order_id}
+                            </Link>
+                          </Table.Cell>
+                          <Table.Cell>
+                            <OrderStatusBadge status={o.status} />
+                          </Table.Cell>
+                          <Table.Cell>
+                            <span className="text-xs text-muted whitespace-nowrap">
+                              {formatPortalDateTime(o.order_updated)}
+                            </span>
+                          </Table.Cell>
+                          <Table.Cell>
+                            <span
+                              className="text-xs text-muted max-w-md truncate block"
+                              title={o.message}
+                            >
+                              {o.message || '—'}
+                            </span>
+                          </Table.Cell>
+                        </Table.Row>
+                      ))}
+                    </Table.Body>
+                  </Table.Content>
+                </Table.ScrollContainer>
+              </Table>
+            )}
+          </Card.Content>
+        </Card>
       )}
     </div>
   );

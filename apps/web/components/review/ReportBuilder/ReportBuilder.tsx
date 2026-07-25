@@ -1,12 +1,12 @@
 'use client';
 
 import { useState } from 'react';
+import { Check, Eye, FileDown } from 'lucide-react';
 import { reportApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import { Button } from '../../ui/Button';
-import { Badge } from '../../ui/Badge';
+import { Button, Card, Chip, Input, Label, Separator } from '@heroui/react';
+import { DatePickerField } from '../../ui/DatePickerField';
 import type { ReviewerInfo, PatientInfo } from '@gx-portal/types';
-import styles from './ReportBuilder.module.css';
 
 export function ReportBuilder({ orderId }: { orderId: string }) {
   const { reviewData, selectedVariants, variantComments } = useReviewStore();
@@ -62,84 +62,133 @@ export function ReportBuilder({ orderId }: { orderId: string }) {
   };
 
   return (
-    <div className={styles.wrap}>
-      <div className={styles.sidebar}>
-        <h3 className={styles.sectionTitle}>Selected Variants ({confirmedVariants.length})</h3>
-        {confirmedVariants.length === 0 ? (
-          <p className={styles.hint}>Go to Variants tab and select P/LP variants to include.</p>
-        ) : (
-          <div className={styles.variantList}>
-            {confirmedVariants.map((v) => (
-              <div key={v.variant_id} className={styles.variantItem}>
-                <strong>{v.gene}</strong>
-                <code className={styles.code}>{v.hgvsc ?? `${v.chrom}:${v.pos}`}</code>
-                {v.reviewer_classification && (
-                  <Badge variant="warning">{v.reviewer_classification.replace(/_/g, ' ')}</Badge>
-                )}
+    <div className="grid min-h-[600px] grid-cols-1 gap-5 lg:grid-cols-[320px_1fr]">
+      <Card className="overflow-y-auto">
+        <Card.Content className="flex flex-col gap-4">
+          <div>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">
+              Selected Variants ({confirmedVariants.length})
+            </h3>
+            {confirmedVariants.length === 0 ? (
+              <p className="text-xs text-muted">Go to Variants tab and select P/LP variants to include.</p>
+            ) : (
+              <div className="flex flex-col gap-2">
+                {confirmedVariants.map((v) => (
+                  <div key={v.variant_id} className="flex flex-col gap-1 rounded-md bg-surface px-2 py-2 text-xs">
+                    <strong>{v.gene}</strong>
+                    <code className="font-mono text-muted">{v.hgvsc ?? `${v.chrom}:${v.pos}`}</code>
+                    {v.reviewer_classification && (
+                      <Chip color="warning" size="sm" variant="soft">
+                        <Chip.Label>{v.reviewer_classification.replace(/_/g, ' ')}</Chip.Label>
+                      </Chip>
+                    )}
+                  </div>
+                ))}
               </div>
-            ))}
+            )}
           </div>
-        )}
 
-        <div className={styles.divider} />
+          <Separator />
 
-        <h3 className={styles.sectionTitle}>Reviewer</h3>
-        <div className={styles.field}>
-          <label className={styles.label}>Name *</label>
-          <input value={reviewer.name} onChange={(e) => setReviewer({ ...reviewer, name: e.target.value })} className={styles.input} />
-        </div>
-        <div className={styles.field}>
-          <label className={styles.label}>Institution</label>
-          <input value={reviewer.institution ?? ''} onChange={(e) => setReviewer({ ...reviewer, institution: e.target.value })} className={styles.input} />
-        </div>
+          <div>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Reviewer</h3>
+            <div className="mb-3 flex flex-col gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted">Name *</Label>
+              <Input
+                value={reviewer.name}
+                onChange={(e) => setReviewer({ ...reviewer, name: e.target.value })}
+                fullWidth
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted">Institution</Label>
+              <Input
+                value={reviewer.institution ?? ''}
+                onChange={(e) => setReviewer({ ...reviewer, institution: e.target.value })}
+                fullWidth
+              />
+            </div>
+          </div>
 
-        <div className={styles.divider} />
+          <Separator />
 
-        <h3 className={styles.sectionTitle}>Patient</h3>
-        <div className={styles.field}>
-          <label className={styles.label}>Name</label>
-          <input value={patient.name ?? ''} onChange={(e) => setPatient({ ...patient, name: e.target.value })} className={styles.input} />
-        </div>
-        <div className={styles.field}>
-          <label className={styles.label}>DOB</label>
-          <input type="date" value={patient.dob ?? ''} onChange={(e) => setPatient({ ...patient, dob: e.target.value })} className={styles.input} />
-        </div>
+          <div>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Patient</h3>
+            <div className="mb-3 flex flex-col gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted">Name</Label>
+              <Input
+                value={patient.name ?? ''}
+                onChange={(e) => setPatient({ ...patient, name: e.target.value })}
+                fullWidth
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label className="text-[11px] font-semibold uppercase tracking-wide text-muted">DOB</Label>
+              <DatePickerField
+                aria-label="Patient date of birth"
+                value={patient.dob ?? ''}
+                onChange={(dob) => setPatient({ ...patient, dob })}
+              />
+            </div>
+          </div>
 
-        <div className={styles.divider} />
+          <Separator />
 
-        <h3 className={styles.sectionTitle}>Report Languages</h3>
-        <div className={styles.langRow}>
-          {(['KO', 'EN', 'CN'] as const).map((lang) => (
-            <button
-              key={lang}
-              type="button"
-              className={`${styles.langBtn} ${languages.includes(lang) ? styles.selected : ''}`}
-              onClick={() => toggleLang(lang)}
+          <div>
+            <h3 className="mb-3 text-xs font-bold uppercase tracking-wider text-muted">Report Languages</h3>
+            <div className="flex flex-wrap gap-2">
+              {(['KO', 'EN', 'CN'] as const).map((lang) => (
+                <Button
+                  key={lang}
+                  type="button"
+                  size="sm"
+                  variant={languages.includes(lang) ? 'primary' : 'secondary'}
+                  onPress={() => toggleLang(lang)}
+                >
+                  {lang}
+                </Button>
+              ))}
+            </div>
+          </div>
+
+          <Separator />
+
+          <div className="flex gap-2">
+            <Button
+              variant="secondary"
+              isDisabled={loading}
+              onPress={() => void handlePreview()}
+              className="gap-1.5"
             >
-              {lang}
-            </button>
-          ))}
-        </div>
-
-        <div className={styles.divider} />
-
-        <div className={styles.actions}>
-          <Button variant="secondary" loading={loading} onClick={handlePreview}>Preview</Button>
-          <Button variant="primary" loading={generating} onClick={handleGenerate}>
-            {done ? '✓ Generated' : 'Generate PDF'}
-          </Button>
-        </div>
-      </div>
-
-      <div className={styles.preview}>
-        {previewHtml ? (
-          <iframe srcDoc={previewHtml} className={styles.previewFrame} title="Report Preview" />
-        ) : (
-          <div className={styles.previewEmpty}>
-            <p>Click "Preview" to render the report.</p>
+              <Eye size={15} strokeWidth={2} aria-hidden />
+              {loading ? 'Loading…' : 'Preview'}
+            </Button>
+            <Button
+              variant="primary"
+              isDisabled={generating}
+              onPress={() => void handleGenerate()}
+              className="gap-1.5"
+            >
+              {done
+                ? <Check size={15} strokeWidth={2} aria-hidden />
+                : <FileDown size={15} strokeWidth={2} aria-hidden />}
+              {generating ? 'Generating…' : done ? 'Generated' : 'Generate PDF'}
+            </Button>
           </div>
-        )}
-      </div>
+        </Card.Content>
+      </Card>
+
+      <Card className="flex flex-col overflow-hidden">
+        <Card.Content className="flex flex-1 flex-col p-0">
+          {previewHtml ? (
+            <iframe srcDoc={previewHtml} className="min-h-[600px] flex-1 border-0 bg-white" title="Report Preview" />
+          ) : (
+            <div className="flex flex-1 items-center justify-center p-8 text-sm text-muted">
+              <p>Click &quot;Preview&quot; to render the report.</p>
+            </div>
+          )}
+        </Card.Content>
+      </Card>
     </div>
   );
 }

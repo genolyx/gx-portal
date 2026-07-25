@@ -2,28 +2,40 @@
 
 import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
+import { Button, Chip, Link, Table } from '@heroui/react';
+import { Pencil, Trash2 } from 'lucide-react';
 import { usersApi } from '../../../lib/api/admin';
 import { PageHeader } from '../../ui/PageHeader';
-import { Button } from '../../ui/Button';
-import { Badge } from '../../ui/Badge';
+import { CreateUserModal } from './CreateUserModal';
 import type { UserProfile } from '@gx-portal/types';
-import styles from '../Admin.module.css';
 
-const ROLE_VARIANT: Record<string, 'accent' | 'warning' | 'info' | 'default'> = {
-  admin: 'accent', client: 'info', lab: 'warning',
+const ROLE_COLOR: Record<string, 'accent' | 'warning' | 'default'> = {
+  admin: 'accent',
+  client: 'default',
+  lab: 'warning',
 };
+
+function roleLabel(role: string) {
+  return role === 'admin' ? 'Administrator' : role.charAt(0).toUpperCase() + role.slice(1);
+}
 
 export function UsersPageClient() {
   const router = useRouter();
   const [users, setUsers] = useState<UserProfile[]>([]);
   const [loading, setLoading] = useState(true);
+  const [showCreate, setShowCreate] = useState(false);
 
   const load = async () => {
-    try { setUsers(await usersApi.list()); }
-    finally { setLoading(false); }
+    try {
+      setUsers(await usersApi.list());
+    } finally {
+      setLoading(false);
+    }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    load();
+  }, []);
 
   const handleDelete = async (id: number, username: string) => {
     if (!confirm(`Delete user "${username}"?`)) return;
@@ -36,57 +48,90 @@ export function UsersPageClient() {
       <PageHeader
         title="Users"
         description="Manage portal users and their role assignments."
-        action={
-          <Button variant="primary" onClick={() => router.push('/admin/users/new')}>+ New User</Button>
+        actions={
+          <Button variant="primary" onPress={() => setShowCreate(true)}>
+            + New User
+          </Button>
         }
       />
 
+      {showCreate && (
+        <CreateUserModal
+          onClose={() => setShowCreate(false)}
+          onSaved={() => void load()}
+        />
+      )}
+
       {loading ? (
-        <p className={styles.empty}>Loading…</p>
+        <p className="py-8 text-center text-muted">Loading…</p>
       ) : users.length === 0 ? (
-        <p className={styles.empty}>No users yet.</p>
+        <p className="py-8 text-center text-muted">No users yet.</p>
       ) : (
-        <div className={styles.tableWrap}>
-          <table>
-            <thead>
-              <tr>
-                <th>Username</th>
-                <th>Name</th>
-                <th>Role</th>
-                <th>Client / Lab</th>
-                <th>Email</th>
-                <th>Created</th>
-                <th></th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map((u) => (
-                <tr key={u.id}>
-                  <td>
-                    <button className={styles.linkBtn} onClick={() => router.push(`/admin/users/${u.id}`)}>
-                      {u.username}
-                    </button>
-                  </td>
-                  <td>{[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}</td>
-                  <td>
-                    <Badge variant={ROLE_VARIANT[u.role] ?? 'default'}>
-                      {u.role === 'admin' ? 'Administrator' : u.role.charAt(0).toUpperCase() + u.role.slice(1)}
-                    </Badge>
-                  </td>
-                  <td className={styles.muted}>
-                    {u.client_name ?? u.lab_name ?? '—'}
-                  </td>
-                  <td className={styles.muted}>{u.email ?? '—'}</td>
-                  <td className={styles.muted}>{u.created_at.slice(0, 10)}</td>
-                  <td>
-                    <Button size="sm" variant="ghost" onClick={() => router.push(`/admin/users/${u.id}`)}>Edit</Button>
-                    <Button size="sm" variant="danger" onClick={() => handleDelete(u.id, u.username)}>Delete</Button>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+        <Table>
+          <Table.ScrollContainer>
+            <Table.Content aria-label="Users">
+              <Table.Header>
+                <Table.Column isRowHeader>Username</Table.Column>
+                <Table.Column>Name</Table.Column>
+                <Table.Column>Role</Table.Column>
+                <Table.Column>Client / Lab</Table.Column>
+                <Table.Column>Email</Table.Column>
+                <Table.Column>Created</Table.Column>
+                <Table.Column>Actions</Table.Column>
+              </Table.Header>
+              <Table.Body>
+                {users.map((u) => (
+                  <Table.Row key={u.id}>
+                    <Table.Cell>
+                      <Link href={`/admin/users/${u.id}`} className="text-sm font-medium">
+                        {u.username}
+                      </Link>
+                    </Table.Cell>
+                    <Table.Cell>
+                      {[u.first_name, u.last_name].filter(Boolean).join(' ') || '—'}
+                    </Table.Cell>
+                    <Table.Cell>
+                      <Chip color={ROLE_COLOR[u.role] ?? 'default'} size="sm" variant="soft">
+                        <Chip.Label>{roleLabel(u.role)}</Chip.Label>
+                      </Chip>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted">{u.client_name ?? u.lab_name ?? '—'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted">{u.email ?? '—'}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <span className="text-sm text-muted">{u.created_at.slice(0, 10)}</span>
+                    </Table.Cell>
+                    <Table.Cell>
+                      <div className="flex gap-1">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          isIconOnly
+                          aria-label={`Edit ${u.username}`}
+                          onPress={() => router.push(`/admin/users/${u.id}`)}
+                        >
+                          <Pencil size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                        <Button
+                          size="sm"
+                          variant="danger"
+                          isIconOnly
+                          aria-label={`Delete ${u.username}`}
+                          onPress={() => handleDelete(u.id, u.username)}
+                        >
+                          <Trash2 size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                      </div>
+                    </Table.Cell>
+                  </Table.Row>
+                ))}
+              </Table.Body>
+            </Table.Content>
+          </Table.ScrollContainer>
+        </Table>
       )}
     </div>
   );
