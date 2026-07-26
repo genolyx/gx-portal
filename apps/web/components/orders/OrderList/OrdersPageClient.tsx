@@ -36,7 +36,7 @@ const INCLUDE_EXTERNAL_KEY = 'gx-portal.orders.includeExternal';
 // ─── Types ────────────────────────────────────────────────────────────────────
 
 type SortKey =
-  | 'order_id' | 'service_code' | 'lab_code'
+  | 'order_id' | 'service_code' | 'primary_panel' | 'lab_code'
   | 'status' | 'progress'
   | 'created_at' | 'updated_at' | 'completed_at'
   | 'message';
@@ -105,6 +105,20 @@ function getPatientName(o: Order): string {
   );
 }
 
+/** Primary (interpretation) panel id from create-order params; empty if none (e.g. sgNIPT). */
+function getPrimaryInterpretation(o: Order): string {
+  if (!o.params) return '';
+  const p = o.params as Record<string, unknown>;
+  const carrier =
+    p.carrier && typeof p.carrier === 'object'
+      ? (p.carrier as Record<string, unknown>)
+      : null;
+  const raw = p.wes_panel_id ?? carrier?.wes_panel_id;
+  if (raw == null || String(raw).trim() === '') return '';
+  // Dropdown labels look like "Carrier_302 (~358 genes)" — show short id/name only
+  return String(raw).replace(/\s*\(\s*~\d+\s*genes?\s*\)\s*$/i, '').trim();
+}
+
 function getReportFiles(files: OutputFile[]): { pdfs: OutputFile[]; htmls: OutputFile[] } {
   const pdfs  = files.filter(f => f.type === 'pdf'  && f.name.toLowerCase().startsWith('report_'));
   const htmls = files.filter(f => f.type === 'html' && f.name.toLowerCase().startsWith('report_'));
@@ -136,7 +150,7 @@ function matchesFilter(o: Order, f: FilterState): boolean {
     const topLevel = [
       o.order_id, o.service_code, o.status,
       getLabCode(o), o.message ?? '', o.sample_name ?? '',
-      getPatientName(o),
+      getPatientName(o), getPrimaryInterpretation(o),
     ].join(' ').toLowerCase();
     if (topLevel.includes(q)) return true;
     if (f.deepSearch && o.params) {
@@ -154,6 +168,7 @@ function sortOrders(orders: Order[], { key, dir }: SortState): Order[] {
     switch (key) {
       case 'order_id':    av = a.order_id;       bv = b.order_id;      break;
       case 'service_code': av = a.service_code;  bv = b.service_code;  break;
+      case 'primary_panel': av = getPrimaryInterpretation(a); bv = getPrimaryInterpretation(b); break;
       case 'lab_code':    av = getLabCode(a);    bv = getLabCode(b);   break;
       case 'status':      av = a.status;         bv = b.status;        break;
       case 'progress':    av = a.progress ?? 0;  bv = b.progress ?? 0; break;
@@ -171,13 +186,14 @@ function sortOrders(orders: Order[], { key, dir }: SortState): Order[] {
 /** Export current visible orders as TSV */
 function exportTsv(orders: Order[]) {
   const headers = [
-    'Order ID', 'Service', 'Lab/Client', 'Status', 'Progress(%)',
+    'Order ID', 'Service', 'Primary (Interpretation)', 'Lab/Client', 'Status', 'Progress(%)',
     'Order Created', 'Result Updated', 'Completed', 'Message',
     'Sample Name', 'Patient',
   ];
   const rows = orders.map(o => [
     o.order_id,
     o.service_code,
+    getPrimaryInterpretation(o) || '-',
     getLabCode(o),
     o.status,
     String(o.progress ?? 0),
@@ -759,6 +775,7 @@ export function OrdersPageClient() {
               <tr>
                 <SortableHead label="Order ID"       sortKey="order_id"     current={sort} onSort={handleSort} />
                 <SortableHead label="Service"        sortKey="service_code" current={sort} onSort={handleSort} />
+                <SortableHead label="Primary (Interpretation)" sortKey="primary_panel" current={sort} onSort={handleSort} />
                 <SortableHead label="Lab / Client"   sortKey="lab_code"     current={sort} onSort={handleSort} />
                 <SortableHead label="Status"         sortKey="status"       current={sort} onSort={handleSort} />
                 <SortableHead label="Progress"       sortKey="progress"     current={sort} onSort={handleSort} />
@@ -791,6 +808,11 @@ export function OrdersPageClient() {
                   </td>
                   <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
                     <ServiceBadge code={o.service_code} />
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
+                    <span className="text-xs font-mono text-muted">
+                      {getPrimaryInterpretation(o) || '-'}
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 border-b border-border">
                     <span className="text-xs text-muted">{getLabCode(o) || '—'}</span>
