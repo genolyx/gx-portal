@@ -42,7 +42,7 @@ export class DbService implements OnModuleInit {
         is_managing_hospitals    INTEGER NOT NULL DEFAULT 0,
         auto_approve_orders      INTEGER NOT NULL DEFAULT 0,
         sign_report              INTEGER NOT NULL DEFAULT 0,
-        created_at               TEXT    NOT NULL DEFAULT (datetime('now'))
+        created_at               TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       );
 
       -- Labs
@@ -53,7 +53,7 @@ export class DbService implements OnModuleInit {
         email      TEXT,
         phone      TEXT,
         client_id  INTEGER REFERENCES clients(id) ON DELETE SET NULL,
-        created_at TEXT    NOT NULL DEFAULT (datetime('now'))
+        created_at TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       );
 
       -- Allowed services per client
@@ -83,7 +83,7 @@ export class DbService implements OnModuleInit {
         client_id           INTEGER REFERENCES clients(id) ON DELETE SET NULL,
         lab_id              INTEGER REFERENCES labs(id)    ON DELETE SET NULL,
         email_notification  INTEGER NOT NULL DEFAULT 0,
-        created_at          TEXT    NOT NULL DEFAULT (datetime('now'))
+        created_at          TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       );
 
       -- Portal order registry (client ownership + ID rules; pipeline data stays in gx-daemon)
@@ -94,7 +94,7 @@ export class DbService implements OnModuleInit {
         service_code     TEXT    NOT NULL,
         legacy_order_id  TEXT,
         work_dir         TEXT,
-        created_at       TEXT    NOT NULL DEFAULT (datetime('now'))
+        created_at       TEXT    NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%SZ', 'now'))
       );
 
       CREATE INDEX IF NOT EXISTS idx_portal_orders_client ON portal_orders(client_id);

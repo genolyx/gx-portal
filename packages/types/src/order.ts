@@ -16,6 +16,59 @@ export type ServiceCode =
   | 'sgnipt'
   | string;
 
+/** Canonical service codes this portal can create. */
+export const PORTAL_SERVICE_CODES = [
+  'carrier_screening',
+  'whole_exome',
+  'health_screening',
+  'sgnipt',
+] as const;
+
+export type PortalServiceCode = (typeof PORTAL_SERVICE_CODES)[number];
+
+/** Legacy / daemon aliases that still count as portal services for list visibility. */
+export const PORTAL_SERVICE_ALIASES = [
+  'carrier',
+  'carrier_couples',
+  'wes_panel',
+  'health_snp',
+] as const;
+
+export const PORTAL_SERVICE_OPTIONS: ReadonlyArray<{ code: PortalServiceCode; label: string }> = [
+  { code: 'carrier_screening', label: 'Carrier Screening' },
+  { code: 'whole_exome', label: 'Whole Exome' },
+  { code: 'health_screening', label: 'Health Screening' },
+  { code: 'sgnipt', label: 'Single-gene NIPT' },
+];
+
+const PORTAL_SERVICE_SET = new Set<string>([
+  ...PORTAL_SERVICE_CODES,
+  ...PORTAL_SERVICE_ALIASES,
+]);
+
+/** Filter-dropdown value → matching service_code values (canonical + aliases). */
+export const PORTAL_SERVICE_FILTER_MATCH: Record<string, readonly string[]> = {
+  carrier_screening: ['carrier_screening', 'carrier', 'carrier_couples'],
+  whole_exome: ['whole_exome', 'wes_panel'],
+  health_screening: ['health_screening', 'health_snp'],
+  sgnipt: ['sgnipt'],
+};
+
+export function isPortalServiceCode(code: string | undefined | null): boolean {
+  if (!code) return false;
+  return PORTAL_SERVICE_SET.has(code.toLowerCase());
+}
+
+export function matchesPortalServiceFilter(
+  orderServiceCode: string,
+  filterValue: string,
+): boolean {
+  if (!filterValue) return true;
+  const group = PORTAL_SERVICE_FILTER_MATCH[filterValue];
+  if (group) return group.includes(orderServiceCode);
+  return orderServiceCode === filterValue;
+}
+
 export interface CarrierParams {
   patient_name?: string;
   patient_dob?: string;

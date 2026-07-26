@@ -1,5 +1,6 @@
+# Production portal (nginx :8090)
+# Runs alongside local next/nest dev (:3000 / :4000) without port conflicts.
 services:
-  # ─── nginx reverse proxy ──────────────────────────────────────────────────
   nginx:
     image: nginx:alpine
     container_name: gx-portal-nginx
@@ -14,24 +15,25 @@ services:
     networks:
       - gx-portal
 
-  # ─── Next.js frontend ──────────────────────────────────────────────────────
   web:
     build:
-      context: ./apps/web
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/web/Dockerfile
+      args:
+        NEXT_PUBLIC_API_URL: /api
     container_name: gx-portal-web
     restart: unless-stopped
     environment:
       - NODE_ENV=production
-      - NEXT_PUBLIC_API_URL=http://nginx/api
+      - PORT=3000
+      - HOSTNAME=0.0.0.0
     networks:
       - gx-portal
 
-  # ─── NestJS BFF ────────────────────────────────────────────────────────────
   api:
     build:
-      context: ./apps/api
-      dockerfile: Dockerfile
+      context: .
+      dockerfile: apps/api/Dockerfile
     container_name: gx-portal-api
     restart: unless-stopped
     environment:
@@ -39,11 +41,16 @@ services:
       - PORT=4000
       - DAEMON_URL=http://host.docker.internal:8010
       - JWT_SECRET=${JWT_SECRET:-change-me-in-production}
-      - JWT_EXPIRES_IN=15m
-      - USERS_DB_PATH=/data/portal.db
-      - CORS_ORIGINS=http://localhost:8090
+      - JWT_EXPIRES_IN=${JWT_EXPIRES_IN:-8h}
+      - JWT_REFRESH_EXPIRES_IN=${JWT_REFRESH_EXPIRES_IN:-7d}
+      # HTTP on :8090 — do not set secure cookies unless TLS terminates in front
+      - COOKIE_SECURE=${COOKIE_SECURE:-false}
+      # Share the same SQLite as local API (Client / Lab / User / portal_orders)
+      - USERS_DB_PATH=/data/users.db
+      - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8090,http://127.0.0.1:8090}
     volumes:
-      - gx-portal-data:/data
+      # Bind-mount host DB so :8090 and :3000 see the same org data
+      - ./apps/api/data:/data
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
@@ -52,6 +59,3 @@ services:
 networks:
   gx-portal:
     driver: bridge
-
-volumes:
-  gx-portal-data:

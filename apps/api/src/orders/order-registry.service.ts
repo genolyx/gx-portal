@@ -8,7 +8,13 @@ import {
 } from '@nestjs/common';
 import { DbService } from '../common/db.service';
 import { DaemonService } from '../daemon/daemon.service';
-import type { Order, OrderListResponse, PortalOrderMeta } from '@gx-portal/types';
+import {
+  isPortalServiceCode,
+  type Order,
+  type OrderListResponse,
+  type PortalOrderMeta,
+} from '@gx-portal/types';
+import { sqliteUtcToIso } from '../common/sqlite-datetime';
 
 export const SERVICE_PREFIX: Record<string, string> = {
   carrier_screening: 'CS',
@@ -104,11 +110,20 @@ export class OrderRegistryService implements OnApplicationBootstrap {
     return new Set(rows.map((r) => r.order_id));
   }
 
-  filterOrderList(response: OrderListResponse, user?: RequestUser): OrderListResponse {
+  filterOrderList(
+    response: OrderListResponse,
+    user?: RequestUser,
+    opts?: { includeExternal?: boolean },
+  ): OrderListResponse {
     const allowed = this.getAllowedOrderIds(user);
     let orders = response.orders;
     if (allowed !== null) {
       orders = orders.filter((o) => allowed.has(o.order_id));
+    }
+    // Default: hide other-portal / non-create services (e.g. nipt). Admin may opt in.
+    const includeExternal = Boolean(opts?.includeExternal) && user?.role === 'admin';
+    if (!includeExternal) {
+      orders = orders.filter((o) => isPortalServiceCode(o.service_code));
     }
     orders = orders.map((o) => this.enrichOrder(o));
     return { ...response, orders, total: orders.length };
@@ -346,7 +361,7 @@ export class OrderRegistryService implements OnApplicationBootstrap {
       legacy_order_id: legacy,
       description: note || legacy,
       work_dir: row.work_dir ?? undefined,
-      created_at: row.created_at,
+      created_at: sqliteUtcToIso(row.created_at),
     };
   }
 }

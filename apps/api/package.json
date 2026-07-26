@@ -1,10 +1,10 @@
 {
   "name": "@gx-portal/api",
-  "version": "0.1.0",
+  "version": "0.0.1",
   "private": true,
   "scripts": {
-    "dev": "nest start --watch",
-    "build": "nest build",
+    "dev": "pnpm --filter @gx-portal/types build && nest start --watch",
+    "build": "pnpm --filter @gx-portal/types build && nest build",
     "start": "node dist/apps/api/src/main",
     "lint": "eslint 'src/**/*.ts'",
     "type-check": "tsc --noEmit"

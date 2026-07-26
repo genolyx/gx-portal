@@ -15,6 +15,7 @@ import {
 } from '@heroui/react';
 import { Trash2 } from 'lucide-react';
 import { catalogApi, type LiteratureArticle, type LiteratureStats } from '../../lib/api/catalog';
+import { formatPortalDate } from '../../lib/datetime';
 import { LabeledCheckbox } from '../ui/LabeledCheckbox';
 import { PageHeader } from '../ui/PageHeader';
 import { RefreshButton } from '../ui/RefreshButton';
@@ -533,7 +534,7 @@ function ArticleTable({
                     </Table.Cell>
                     <Table.Cell>
                       <span className="text-sm text-muted whitespace-nowrap">
-                        {a.cached_at ? new Date(String(a.cached_at)).toLocaleDateString() : '—'}
+                        {a.cached_at ? formatPortalDate(String(a.cached_at)) : '—'}
                       </span>
                     </Table.Cell>
                   </>

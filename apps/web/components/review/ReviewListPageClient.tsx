@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
 import { Button, Link, Spinner, Table } from '@heroui/react';
 import { ordersApi } from '../../lib/api/orders';
+import { formatPortalDateTime } from '../../lib/datetime';
 import { PageHeader } from '../ui/PageHeader';
 import { OrderStatusBadge } from '../ui/OrderStatusBadge';
 import type { Order } from '@gx-portal/types';
@@ -73,7 +74,7 @@ export function ReviewListPageClient() {
                     </Table.Cell>
                     <Table.Cell>
                       <span className="text-xs text-muted whitespace-nowrap">
-                        {o.updated_at?.slice(0, 16).replace('T', ' ') ?? '—'}
+                        {formatPortalDateTime(o.updated_at)}
                       </span>
                     </Table.Cell>
                     <Table.Cell>

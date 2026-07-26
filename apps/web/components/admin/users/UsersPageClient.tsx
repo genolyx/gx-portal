@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Chip, Link, Table } from '@heroui/react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { usersApi } from '../../../lib/api/admin';
+import { formatPortalDate } from '../../../lib/datetime';
 import { PageHeader } from '../../ui/PageHeader';
 import { CreateUserModal } from './CreateUserModal';
 import type { UserProfile } from '@gx-portal/types';
@@ -102,7 +103,7 @@ export function UsersPageClient() {
                       <span className="text-sm text-muted">{u.email ?? '—'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm text-muted">{u.created_at.slice(0, 10)}</span>
+                      <span className="text-sm text-muted">{formatPortalDate(u.created_at)}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex gap-1">

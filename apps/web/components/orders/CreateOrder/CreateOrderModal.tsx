@@ -12,18 +12,20 @@ import { DatePickerField } from '../../ui/DatePickerField';
 import { SelectField } from '../../ui/SelectField';
 import { FileBrowseModal } from './FileBrowseModal';
 import { portalTodayIso } from '../../../lib/datetime';
-import type { Order } from '@gx-portal/types';
+import {
+  PORTAL_SERVICE_OPTIONS,
+  type Order,
+  type PortalServiceCode,
+} from '@gx-portal/types';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type ServiceCode = 'carrier_screening' | 'whole_exome' | 'health_screening' | 'sgnipt';
+type ServiceCode = PortalServiceCode;
 
-const SERVICES: { code: ServiceCode; label: string }[] = [
-  { code: 'carrier_screening', label: 'Carrier Screening' },
-  { code: 'whole_exome',       label: 'Whole Exome' },
-  { code: 'health_screening',  label: 'Health Screening' },
-  { code: 'sgnipt',            label: 'Single-gene NIPT' },
-];
+const SERVICES: { code: ServiceCode; label: string }[] = PORTAL_SERVICE_OPTIONS.map((s) => ({
+  code: s.code,
+  label: s.label,
+}));
 
 const GENDERS         = ['Female', 'Male', 'Unknown'];
 const NIPT_GENDERS    = ['Female', 'Male', 'Other'];

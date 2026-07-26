@@ -23,6 +23,7 @@ import { ThemeToggle, FontSizeToggle } from './ThemeToggle';
 import { Sidebar } from './Sidebar';
 import { authApi } from '../../lib/api/auth';
 import { systemApi } from '../../lib/api/system';
+import { WEB_VERSION } from '../../lib/app-version';
 import { activeDaemonUrl, DAEMON_URL_KEY, resolveDaemonPreset } from '../../lib/daemon-presets';
 
 type NavLink = {
@@ -81,6 +82,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const [daemonLabel, setDaemonLabel] = useState<string>('gx-daemon');
   const [daemonUrl, setDaemonUrl] = useState<string>('');
   const [user, setUser] = useState<UserProfile | null>(null);
+  const [apiVersion, setApiVersion] = useState<string | null>(null);
   const [loggingOut, setLoggingOut] = useState(false);
 
   useEffect(() => {
@@ -104,9 +106,9 @@ export function AppShell({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     const check = () => {
-      systemApi.health().then((h: unknown) => {
-        const health = h as { daemon?: { status?: string } };
+      systemApi.health().then((health) => {
         setDaemonOk(health?.daemon?.status !== 'unreachable');
+        if (health?.version) setApiVersion(health.version);
       }).catch(() => setDaemonOk(false));
     };
     check();
@@ -200,6 +202,12 @@ export function AppShell({ children }: { children: React.ReactNode }) {
               {userLabel(user)}
             </p>
             {user?.role && <p className="sidebar__user-role">{user.role}</p>}
+            <p
+              className="sidebar__user-versions"
+              title={`API v${apiVersion ?? '…'} · Web v${WEB_VERSION}`}
+            >
+              API v{apiVersion ?? '…'} Web v{WEB_VERSION}
+            </p>
           </div>
           <Button
             type="button"

@@ -38,12 +38,18 @@ export class AuthController {
       body.password,
     );
 
-    const isProd = this.config.get('NODE_ENV') === 'production';
+    // COOKIE_SECURE=true only when serving over HTTPS. Docker :8090 is HTTP by default.
+    const secure = this.config.get<string>('COOKIE_SECURE') === 'true';
+    const maxAgeMs = this.parseDurationMs(
+      this.config.get<string>('JWT_EXPIRES_IN') ?? '15m',
+      15 * 60 * 1000,
+    );
     res.cookie(ACCESS_TOKEN_COOKIE, access_token, {
       httpOnly: true,
-      secure: isProd,
-      sameSite: isProd ? 'strict' : 'lax',
-      maxAge: 15 * 60 * 1000, // 15 min
+      secure,
+      sameSite: secure ? 'strict' : 'lax',
+      maxAge: maxAgeMs,
+      path: '/',
     });
 
     return { user };
@@ -53,7 +59,26 @@ export class AuthController {
   @HttpCode(HttpStatus.NO_CONTENT)
   @ApiOperation({ summary: 'Clear auth cookie' })
   logout(@Res({ passthrough: true }) res: Response) {
-    res.clearCookie(ACCESS_TOKEN_COOKIE);
+    const secure = this.config.get<string>('COOKIE_SECURE') === 'true';
+    res.clearCookie(ACCESS_TOKEN_COOKIE, {
+      httpOnly: true,
+      secure,
+      sameSite: secure ? 'strict' : 'lax',
+      path: '/',
+    });
+  }
+
+  private parseDurationMs(value: string, fallback: number): number {
+    const m = /^(\d+)([smhd])$/i.exec(value.trim());
+    if (!m) return fallback;
+    const n = Number(m[1]);
+    const unit = m[2].toLowerCase();
+    const mult =
+      unit === 's' ? 1000 :
+      unit === 'm' ? 60_000 :
+      unit === 'h' ? 3_600_000 :
+      86_400_000;
+    return n * mult;
   }
 
   @Get('me')

@@ -1,0 +1,17 @@
+**/node_modules
+**/.next
+**/dist
+**/.turbo
+**/.git
+**/data
+**/*.md
+**/.env
+**/.env.*
+!apps/api/.env.example
+!apps/web/.env.example
+**/coverage
+**/.DS_Store
+agent-transcripts
+.cursor
+.tmp
+*.log

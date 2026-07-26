@@ -1,6 +1,7 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import * as bcrypt from 'bcryptjs';
 import { DbService } from '../common/db.service';
+import { sqliteUtcToIso } from '../common/sqlite-datetime';
 import type { UserProfile, CreateUserDto, UpdateUserDto } from '@gx-portal/types';
 
 interface UserRow {
@@ -139,7 +140,7 @@ export class UsersService {
       lab_id: row.lab_id ?? undefined,
       lab_name: row.lab_name ?? undefined,
       email_notification: Boolean(row.email_notification),
-      created_at: row.created_at,
+      created_at: sqliteUtcToIso(row.created_at),
     };
   }
 }

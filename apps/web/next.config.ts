@@ -1,6 +1,7 @@
 import type { NextConfig } from 'next';
 
 const nextConfig: NextConfig = {
+  output: 'standalone',
   transpilePackages: ['@gx-portal/types'],
   async rewrites() {
     // Server-side proxy target (not exposed to browser)

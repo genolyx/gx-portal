@@ -13,6 +13,7 @@ node_modules
 dist
 .next
 *.tsbuildinfo
+packages/types/dist/
 
 # Portal SQLite runtime DB (USERS_DB_PATH — users.db / portal.db + WAL)
 apps/api/data/
@@ -24,6 +25,10 @@ apps/api/data/
 *.log
 npm-debug.log*
 pnpm-debug.log*
+
+# Local run.sh state (pid + logs)
+apps/api/.run/
+apps/web/.run/
 
 # OS / editor
 .DS_Store

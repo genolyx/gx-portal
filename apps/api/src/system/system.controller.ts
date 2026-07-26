@@ -5,6 +5,7 @@ import { Readable } from 'stream';
 import { SystemService } from './system.service';
 import { HostResourcesService } from './host-resources.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
+import { API_VERSION } from '../version';
 
 @ApiTags('system')
 @Controller('system')
@@ -18,7 +19,7 @@ export class SystemController {
   @ApiOperation({ summary: 'Gx-portal + daemon health check' })
   async health() {
     const daemonHealth = await this.systemService.health().catch(() => ({ status: 'unreachable' }));
-    return { portal: 'ok', daemon: daemonHealth };
+    return { portal: 'ok', version: API_VERSION, daemon: daemonHealth };
   }
 
   @Get('queue')

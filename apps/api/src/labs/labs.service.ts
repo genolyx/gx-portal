@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { DbService } from '../common/db.service';
+import { sqliteUtcToIso } from '../common/sqlite-datetime';
 import type { Lab, CreateLabDto, UpdateLabDto } from '@gx-portal/types';
 
 interface LabRow {
@@ -107,7 +108,7 @@ export class LabsService {
       client_id: row.client_id ?? undefined,
       client_name: row.client_name ?? undefined,
       service_codes: row.services ? row.services.split(',') : [],
-      created_at: row.created_at,
+      created_at: sqliteUtcToIso(row.created_at),
     };
   }
 }

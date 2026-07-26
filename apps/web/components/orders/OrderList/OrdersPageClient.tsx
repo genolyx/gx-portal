@@ -1,10 +1,11 @@
 'use client';
 
-import { useEffect, useState, useCallback, useRef } from 'react';
+import { useEffect, useState, useCallback, useRef, useMemo } from 'react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import { Button, Card, Chip, Dropdown, Input, Label, Switch } from '@heroui/react';
 import { ordersApi } from '../../../lib/api/orders';
+import { authApi } from '../../../lib/api/auth';
 import { PageHeader } from '../../ui/PageHeader';
 import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
 import { DatePickerField } from '../../ui/DatePickerField';
@@ -13,10 +14,24 @@ import { RefreshButton } from '../../ui/RefreshButton';
 import { CreateOrderModal } from '../CreateOrder/CreateOrderModal';
 import { ReportDownloadLink } from '../ReportDownloadLink';
 import { reportLangLabel } from '../../../lib/report-downloads';
-import type { Order } from '@gx-portal/types';
+import {
+  isPortalServiceCode,
+  matchesPortalServiceFilter,
+  PORTAL_SERVICE_OPTIONS,
+  type Order,
+  type UserProfile,
+} from '@gx-portal/types';
 import { buildOrderMenuItems, canEditOrderService, type OrderMenuAction } from '../../../lib/order-menu';
 import { cn } from '../../../lib/utils';
-import { formatPortalDateTime, parsePortalDate, portalDayEnd, portalDayStart } from '../../../lib/datetime';
+import {
+  formatPortalDateTime,
+  parsePortalDate,
+  portalDayEnd,
+  portalDayStart,
+  portalTodayIso,
+} from '../../../lib/datetime';
+
+const INCLUDE_EXTERNAL_KEY = 'gx-portal.orders.includeExternal';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -46,13 +61,26 @@ const EMPTY_FILTER: FilterState = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUSES = ['', 'SAVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'REPORT_READY', 'FAILED', 'CANCELLED'];
-const SERVICES: { value: string; label: string }[] = [
-  { value: '',                  label: 'All Services'      },
-  { value: 'carrier_screening', label: 'Carrier Screening' },
-  { value: 'whole_exome',       label: 'Whole Exome'       },
-  { value: 'health_snp',        label: 'Health Screening'  },
-  { value: 'sgnipt',            label: 'Single-gene NIPT'  },
+const PORTAL_SERVICES: { value: string; label: string }[] = [
+  { value: '', label: 'All Services' },
+  ...PORTAL_SERVICE_OPTIONS.map(({ code, label }) => ({ value: code, label })),
 ];
+
+function serviceLabel(code: string): string {
+  const known: Record<string, string> = {
+    carrier_screening: 'Carrier Screening',
+    carrier: 'Carrier Screening',
+    carrier_couples: 'Carrier Screening',
+    whole_exome: 'Whole Exome',
+    wes_panel: 'Whole Exome',
+    health_snp: 'Health Screening',
+    health_screening: 'Health Screening',
+    sgnipt: 'Single-gene NIPT',
+    nipt: 'NIPT',
+  };
+  return known[code.toLowerCase()]
+    ?? code.replace(/_/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
@@ -98,8 +126,8 @@ function matchesFilter(o: Order, f: FilterState): boolean {
     const d = parsePortalDate(o.created_at);
     if (!d || d > portalDayEnd(f.dateTo)) return false;
   }
-  // Service
-  if (f.service && o.service_code !== f.service) return false;
+  // Service (canonical filter value matches aliases, e.g. health_screening ↔ health_snp)
+  if (f.service && !matchesPortalServiceFilter(o.service_code, f.service)) return false;
   // Status
   if (f.status && o.status !== f.status) return false;
   // Text
@@ -153,9 +181,9 @@ function exportTsv(orders: Order[]) {
     getLabCode(o),
     o.status,
     String(o.progress ?? 0),
-    o.created_at ?? '',
-    o.updated_at ?? '',
-    o.completed_at ?? '',
+    formatPortalDateTime(o.created_at, ''),
+    formatPortalDateTime(o.updated_at, ''),
+    formatPortalDateTime(o.completed_at, ''),
     o.message ?? '',
     o.sample_name ?? '',
     getPatientName(o),
@@ -166,7 +194,7 @@ function exportTsv(orders: Order[]) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
-  a.download = `orders_${new Date().toISOString().slice(0, 10)}.tsv`;
+  a.download = `orders_${portalTodayIso()}.tsv`;
   a.click();
   URL.revokeObjectURL(url);
 }
@@ -191,9 +219,25 @@ interface SearchPanelProps {
   onRefresh: () => void | Promise<void>;
   refreshing?: boolean;
   resultCount: number;
+  isAdmin?: boolean;
+  includeExternal?: boolean;
+  onIncludeExternalChange?: (value: boolean) => void;
+  serviceOptions: { value: string; label: string }[];
 }
 
-function SearchPanel({ pending, setPending, onApply, onExport, onRefresh, refreshing, resultCount }: SearchPanelProps) {
+function SearchPanel({
+  pending,
+  setPending,
+  onApply,
+  onExport,
+  onRefresh,
+  refreshing,
+  resultCount,
+  isAdmin,
+  includeExternal,
+  onIncludeExternalChange,
+  serviceOptions,
+}: SearchPanelProps) {
   const set = <K extends keyof FilterState>(k: K, v: FilterState[K]) =>
     setPending(prev => ({ ...prev, [k]: v }));
 
@@ -272,7 +316,7 @@ function SearchPanel({ pending, setPending, onApply, onExport, onRefresh, refres
             aria-label="Service filter"
             value={pending.service}
             onChange={(v) => set('service', v)}
-            options={SERVICES.map(({ value, label }) => ({ id: value, label }))}
+            options={serviceOptions.map(({ value, label }) => ({ id: value, label }))}
           />
         </div>
 
@@ -285,6 +329,29 @@ function SearchPanel({ pending, setPending, onApply, onExport, onRefresh, refres
             options={STATUSES.map((s) => ({ id: s, label: s || 'All Status' }))}
           />
         </div>
+
+        {isAdmin && onIncludeExternalChange && (
+          <div className="flex flex-col items-end gap-1.5 self-end pb-[1px]">
+            <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+              External services
+            </span>
+            <Switch
+              isSelected={Boolean(includeExternal)}
+              onChange={onIncludeExternalChange}
+              size="sm"
+              className="!flex-row !items-center !gap-2"
+            >
+              <Switch.Content className="!flex-row !items-center !gap-2">
+                <span className="text-xs text-muted tabular-nums w-7 text-right">
+                  {includeExternal ? 'ON' : 'OFF'}
+                </span>
+                <Switch.Control>
+                  <Switch.Thumb />
+                </Switch.Control>
+              </Switch.Content>
+            </Switch>
+          </div>
+        )}
 
         {/* Buttons */}
         <div className="flex items-center gap-2 ml-auto mt-4">
@@ -366,26 +433,26 @@ function ProgressBar({ value }: { value: number }) {
 // ─── ServiceBadge ─────────────────────────────────────────────────────────────
 
 function ServiceBadge({ code }: { code: string }) {
-  const SERVICE_META: Record<string, { label: string; color?: 'accent' | 'warning' | 'success' | 'default' }> = {
-    carrier_screening: { label: 'Carrier Screening', color: 'accent' },
-    carrier:           { label: 'Carrier Screening', color: 'accent' },
-    carrier_couples:   { label: 'Carrier Screening', color: 'accent' },
-    whole_exome:       { label: 'Whole Exome',        color: 'warning'  },
-    wes_panel:         { label: 'Whole Exome',        color: 'warning'  },
-    health_snp:        { label: 'Health Screening',   color: 'success'    },
-    sgnipt:            { label: 'Single-gene NIPT',   color: 'accent'    },
-    nipt:              { label: 'NIPT',               color: 'accent'    },
+  const SERVICE_COLOR: Record<string, 'accent' | 'warning' | 'success' | 'default'> = {
+    carrier_screening: 'accent',
+    carrier: 'accent',
+    carrier_couples: 'accent',
+    whole_exome: 'warning',
+    wes_panel: 'warning',
+    health_snp: 'success',
+    health_screening: 'success',
+    sgnipt: 'accent',
+    nipt: 'accent',
   };
-  const meta = SERVICE_META[code.toLowerCase()];
-  const label = meta?.label ?? code.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
+  const color = SERVICE_COLOR[code.toLowerCase()] ?? 'default';
   return (
     <Chip
-      color={meta?.color ?? 'default'}
+      color={color}
       size="sm"
       variant="soft"
       className="max-w-none whitespace-nowrap"
     >
-      <Chip.Label className="whitespace-nowrap">{label}</Chip.Label>
+      <Chip.Label className="whitespace-nowrap">{serviceLabel(code)}</Chip.Label>
     </Chip>
   );
 }
@@ -559,15 +626,33 @@ export function OrdersPageClient() {
   const [sort, setSort]       = useState<SortState>({ key: 'created_at', dir: 'desc' });
   const [showCreate, setShowCreate] = useState(false);
   const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [includeExternal, setIncludeExternal] = useState(() => {
+    if (typeof window === 'undefined') return false;
+    try {
+      return localStorage.getItem(INCLUDE_EXTERNAL_KEY) === '1';
+    } catch {
+      return false;
+    }
+  });
 
   // Two-stage filter: pending (in the form) → active (applied to data)
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTER);
   const [active,  setActive]  = useState<FilterState>(EMPTY_FILTER);
 
+  const isAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    authApi.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
   const load = useCallback(async (manual = false) => {
     if (manual) setRefreshing(true);
     try {
-      const res = await ordersApi.list();
+      // API ignores include_external for non-admins.
+      const res = await ordersApi.list(
+        includeExternal ? { include_external: true } : undefined,
+      );
       setOrders(res.orders ?? []);
     } catch (e) {
       if (manual) throw e instanceof Error ? e : new Error('Failed to refresh orders');
@@ -575,7 +660,7 @@ export function OrdersPageClient() {
       setLoading(false);
       if (manual) setRefreshing(false);
     }
-  }, []);
+  }, [includeExternal]);
 
   useEffect(() => {
     void load(false);
@@ -583,10 +668,42 @@ export function OrdersPageClient() {
     return () => clearInterval(id);
   }, [load]);
 
+  const handleIncludeExternalChange = (value: boolean) => {
+    setIncludeExternal(value);
+    try {
+      localStorage.setItem(INCLUDE_EXTERNAL_KEY, value ? '1' : '0');
+    } catch {
+      /* ignore */
+    }
+    if (!value) {
+      const clearExternalFilter = (prev: FilterState): FilterState => {
+        if (!prev.service) return prev;
+        if (PORTAL_SERVICES.some((s) => s.value === prev.service)) return prev;
+        if (isPortalServiceCode(prev.service)) return prev;
+        return { ...prev, service: '' };
+      };
+      setPending(clearExternalFilter);
+      setActive(clearExternalFilter);
+    }
+  };
+
   const applyFilters = () => setActive({ ...pending });
 
   const handleSort = (key: SortKey) =>
     setSort(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
+
+  const serviceOptions = useMemo(() => {
+    if (!includeExternal) return PORTAL_SERVICES;
+    const external = [...new Set(
+      orders
+        .map((o) => o.service_code)
+        .filter((code) => code && !isPortalServiceCode(code)),
+    )].sort();
+    return [
+      ...PORTAL_SERVICES,
+      ...external.map((code) => ({ value: code, label: serviceLabel(code) })),
+    ];
+  }, [includeExternal, orders]);
 
   const filtered = orders.filter(o => matchesFilter(o, active));
   const sorted   = sortOrders(filtered, sort);
@@ -620,6 +737,10 @@ export function OrdersPageClient() {
         onRefresh={() => load(true)}
         refreshing={refreshing}
         resultCount={sorted.length}
+        isAdmin={isAdmin}
+        includeExternal={includeExternal}
+        onIncludeExternalChange={handleIncludeExternalChange}
+        serviceOptions={serviceOptions}
       />
 
       {/* ── Instruction hint ── */}

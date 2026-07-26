@@ -64,14 +64,21 @@ Default credentials: **admin / admin1234** (change on first login!)
 
 ## Docker (production)
 
+Runs on **:8090** and can sit alongside local dev (`:3000` / `:4000`).
+
 ```bash
-cp apps/api/.env.example apps/api/.env
-# Set JWT_SECRET=<random>
+# Optional: root .env for compose (JWT_SECRET, CORS_ORIGINS, …)
+# cp apps/api/.env.example .env   # then edit JWT_SECRET
 
 docker compose up -d --build
 ```
 
-Open http://localhost:8090
+| Env | URL |
+|-----|-----|
+| Development | http://localhost:3000 |
+| Production (Docker) | http://localhost:8090 |
+
+Prod uses its own SQLite volume (`gx-portal-data`); default login is still **admin / admin1234** on first boot.
 
 ---
 

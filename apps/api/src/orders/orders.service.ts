@@ -15,6 +15,8 @@ export interface OrderListQuery {
   status?: string;
   limit?: number;
   offset?: number;
+  /** Admin-only: include non-portal services (e.g. nipt from shared daemon). */
+  include_external?: string | boolean;
 }
 
 @Injectable()
@@ -25,8 +27,13 @@ export class OrdersService {
   ) {}
 
   async listOrders(query: OrderListQuery, user?: RequestUser): Promise<OrderListResponse> {
-    const resp = await this.daemon.get<OrderListResponse>('/orders', query);
-    return this.registry.filterOrderList(resp, user);
+    const { include_external: includeExternalRaw, ...daemonQuery } = query;
+    const includeExternal =
+      includeExternalRaw === true ||
+      includeExternalRaw === 'true' ||
+      includeExternalRaw === '1';
+    const resp = await this.daemon.get<OrderListResponse>('/orders', daemonQuery);
+    return this.registry.filterOrderList(resp, user, { includeExternal });
   }
 
   private isNotFound(err: unknown): boolean {

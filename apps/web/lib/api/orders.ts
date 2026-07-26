@@ -8,6 +8,8 @@ export interface OrderListParams {
   status?: string;
   limit?: number;
   offset?: number;
+  /** Admin-only: include non-portal services from the shared daemon. */
+  include_external?: boolean;
 }
 
 export const ordersApi = {

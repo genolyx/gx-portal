@@ -29,7 +29,8 @@ async function bootstrap() {
     .addBearerAuth()
     .build();
   const document = SwaggerModule.createDocument(app, config);
-  SwaggerModule.setup('api/docs', app, document);
+  // Behind nginx /api/ strip this is served at http://host:8090/api/docs
+  SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 4000;
   await app.listen(port);

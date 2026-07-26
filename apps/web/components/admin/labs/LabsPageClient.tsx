@@ -5,6 +5,7 @@ import { useRouter } from 'next/navigation';
 import { Button, Chip, Link, Table } from '@heroui/react';
 import { Pencil, Trash2 } from 'lucide-react';
 import { labsApi } from '../../../lib/api/admin';
+import { formatPortalDate } from '../../../lib/datetime';
 import { PageHeader } from '../../ui/PageHeader';
 import { CreateLabModal } from './CreateLabModal';
 import type { Lab } from '@gx-portal/types';
@@ -102,7 +103,7 @@ export function LabsPageClient() {
                       <span className="text-sm text-muted">{l.email ?? '—'}</span>
                     </Table.Cell>
                     <Table.Cell>
-                      <span className="text-sm text-muted">{l.created_at.slice(0, 10)}</span>
+                      <span className="text-sm text-muted">{formatPortalDate(l.created_at)}</span>
                     </Table.Cell>
                     <Table.Cell>
                       <div className="flex gap-1">

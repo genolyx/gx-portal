@@ -1,5 +1,6 @@
 import { Injectable, NotFoundException, ConflictException } from '@nestjs/common';
 import { DbService } from '../common/db.service';
+import { sqliteUtcToIso } from '../common/sqlite-datetime';
 import type { Client, CreateClientDto, UpdateClientDto } from '@gx-portal/types';
 
 interface ClientRow {
@@ -139,7 +140,7 @@ export class ClientsService {
       auto_approve_orders: Boolean(row.auto_approve_orders),
       sign_report: Boolean(row.sign_report),
       service_codes: row.services ? row.services.split(',') : [],
-      created_at: row.created_at,
+      created_at: sqliteUtcToIso(row.created_at),
     };
   }
 }

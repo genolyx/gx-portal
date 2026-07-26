@@ -1,7 +1,13 @@
 import { api } from './client';
 
+export type SystemHealth = {
+  portal?: string;
+  version?: string;
+  daemon?: { status?: string };
+};
+
 export const systemApi = {
-  health:    () => api.get<unknown>('/system/health'),
+  health:    () => api.get<SystemHealth>('/system/health'),
   queue:     () => api.get<unknown>('/system/queue'),
   dashboardBucket: (params: {
     bucket: string;
