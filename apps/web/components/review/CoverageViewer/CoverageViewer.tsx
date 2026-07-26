@@ -3,7 +3,7 @@
 import dynamic from 'next/dynamic';
 import { useEffect, useRef, useState } from 'react';
 import { Eraser, MapPin, Navigation, RefreshCw, Search } from 'lucide-react';
-import { Button, Input, ListBox, Radio, RadioGroup, Select } from '@heroui/react';
+import { Button, Input, ListBox, Radio, RadioGroup, Select, Spinner } from '@heroui/react';
 import { reviewApi } from '../../../lib/api/review';
 import { isSgniptReviewData } from '../../../lib/sgnipt-normalize';
 import { useReviewStore } from '../../../lib/store/reviewStore';
@@ -13,8 +13,9 @@ import type { IgvBrowserHandle } from './IgvBrowser';
 const IgvBrowser = dynamic(() => import('./IgvBrowser'), {
   ssr: false,
   loading: () => (
-    <div className="flex min-h-[180px] items-center justify-center border-t border-border px-5 py-10 text-[13px] text-muted">
-      Loading IGV…
+    <div className="flex min-h-[180px] flex-col items-center justify-center gap-2 border-t border-border px-5 py-10 text-muted">
+      <Spinner size="md" color="accent" />
+      <span className="text-[13px]">Loading IGV…</span>
     </div>
   ),
 });
@@ -251,7 +252,12 @@ export function CoverageViewer({ orderId }: { orderId: string }) {
   };
 
   if (loadingCtx) {
-    return <p className="py-10 text-center text-sm text-muted">Loading coverage context…</p>;
+    return (
+      <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 text-muted">
+        <Spinner size="lg" color="accent" />
+        <p className="text-sm">Loading coverage context…</p>
+      </div>
+    );
   }
   if (ctxError) {
     return <p className="py-10 text-center text-danger">{ctxError}</p>;

@@ -8,10 +8,11 @@ import {
   ListBox,
   Modal,
   Select,
-  Table,
+  Spinner,
   TextArea,
 } from '@heroui/react';
 import { reviewApi } from '../../../lib/api/review';
+import { isSgniptReviewData } from '../../../lib/sgnipt-normalize';
 import { useReviewStore } from '../../../lib/store/reviewStore';
 import type {
   GeneKnowledgeRow,
@@ -29,16 +30,27 @@ function makeVariantKey(gene: string, hgvsc?: string, hgvsp?: string): string {
   return `${g}|`;
 }
 
+const PAGE_SIZE = 80;
+/** Cap gene list sent to the API — huge sgNIPT panels otherwise stall the tab. */
+const MAX_GENES_FOR_FETCH = 250;
+
 export function GeneDatabase({ orderId }: { orderId: string }) {
-  const { reviewData, selectedVariants } = useReviewStore();
+  const reviewData = useReviewStore((s) => s.reviewData);
+  const selectedVariants = useReviewStore((s) => s.selectedVariants);
+
   const [genesMap, setGenesMap] = useState<Record<string, GeneKnowledgeRow>>({});
   const [variantsMap, setVariantsMap] = useState<Record<string, VariantKnowledgeRow>>({});
   const [search, setSearch] = useState('');
   const [lang, setLang] = useState<'EN' | 'CN' | 'KO'>('EN');
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [enriching, setEnriching] = useState(false);
   const [hint, setHint] = useState('');
   const [msg, setMsg] = useState('');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+
+  const isSgnipt = isSgniptReviewData(reviewData as Record<string, unknown> | null);
+  /** Large panels: default to selected variants only so the table stays usable. */
+  const [selectedOnly, setSelectedOnly] = useState(() => isSgnipt);
 
   const [editGene, setEditGene] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<GeneKnowledgeSaveRequest>({
@@ -56,6 +68,7 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
   const [savingNotes, setSavingNotes] = useState(false);
 
   const variants = reviewData?.variants ?? [];
+
   const selectedGeneSymbols = useMemo(() => {
     const set = new Set<string>();
     for (const v of variants) {
@@ -64,9 +77,15 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
     return [...set].sort();
   }, [variants, selectedVariants]);
 
+  const sourceVariants = useMemo(() => {
+    if (!selectedOnly) return variants;
+    if (selectedVariants.size === 0) return variants;
+    return variants.filter((v) => selectedVariants.has(v.variant_id));
+  }, [variants, selectedOnly, selectedVariants]);
+
   const rows = useMemo(() => {
-    const byGene = new Map<string, typeof variants>();
-    for (const v of variants) {
+    const byGene = new Map<string, typeof sourceVariants>();
+    for (const v of sourceVariants) {
       const g = (v.gene || '').toUpperCase();
       if (!g) continue;
       if (!byGene.has(g)) byGene.set(g, []);
@@ -97,25 +116,37 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
       }
     }
     return out;
-  }, [variants, genesMap, variantsMap]);
+  }, [sourceVariants, genesMap, variantsMap]);
 
-  const filtered = rows.filter((r) => {
-    if (!search) return true;
+  const filtered = useMemo(() => {
+    if (!search) return rows;
     const q = search.toLowerCase();
-    const blob = [
-      r.gene,
-      r.hgvsc,
-      r.hgvsp,
-      r.gk.disorder,
-      r.gk.function_summary,
-      r.gk.disease_association,
-      r.vkRow.variant_notes,
-    ]
-      .filter(Boolean)
-      .join(' ')
-      .toLowerCase();
-    return blob.includes(q);
-  });
+    return rows.filter((r) => {
+      const blob = [
+        r.gene,
+        r.hgvsc,
+        r.hgvsp,
+        r.gk.disorder,
+        r.gk.function_summary,
+        r.gk.disease_association,
+        r.vkRow.variant_notes,
+      ]
+        .filter(Boolean)
+        .join(' ')
+        .toLowerCase();
+      return blob.includes(q);
+    });
+  }, [rows, search]);
+
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [search, selectedOnly, lang, orderId]);
+
+  const pageRows = useMemo(
+    () => filtered.slice(0, visibleCount),
+    [filtered, visibleCount],
+  );
+  const hasMore = visibleCount < filtered.length;
 
   const applyResponse = useCallback((res: Awaited<ReturnType<typeof reviewApi.getGeneKnowledge>>) => {
     setGenesMap(res.genes ?? {});
@@ -132,6 +163,17 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
     if (res.error) setMsg(res.error);
   }, []);
 
+  // Genes for API fetch — prefer selected; otherwise unique genes capped for sgNIPT.
+  const genesForFetch = useMemo(() => {
+    const preferred = selectedGeneSymbols.length > 0
+      ? selectedGeneSymbols
+      : [...new Set(variants.map((v) => (v.gene || '').toUpperCase()).filter(Boolean))].sort();
+    if (preferred.length <= MAX_GENES_FOR_FETCH) return preferred;
+    return preferred.slice(0, MAX_GENES_FOR_FETCH);
+  }, [variants, selectedGeneSymbols]);
+
+  const genesCsv = genesForFetch.join(',');
+
   const loadKnowledge = useCallback(
     async (enrich: boolean) => {
       if (!orderId) return;
@@ -146,7 +188,9 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
         const res = await reviewApi.getGeneKnowledge(orderId, {
           enrich,
           lang,
-          genes: selectedGeneSymbols.length > 0 ? selectedGeneSymbols.join(',') : undefined,
+          genes: enrich
+            ? selectedGeneSymbols.join(',')
+            : (genesCsv || undefined),
         });
         applyResponse(res);
         if (enrich && !res.error) setMsg(`Gene knowledge updated (${lang}).`);
@@ -157,43 +201,40 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
         setEnriching(false);
       }
     },
-    [orderId, lang, selectedGeneSymbols, applyResponse],
-  );
-
-  // Stable gene list for the fetch — avoid refetch when only variant objects are replaced.
-  const genesCsv = useMemo(
-    () =>
-      [...new Set(variants.map((v) => (v.gene || '').toUpperCase()).filter(Boolean))]
-        .sort()
-        .join(','),
-    [variants],
+    [orderId, lang, selectedGeneSymbols, genesCsv, applyResponse],
   );
 
   useEffect(() => {
     if (!orderId) return;
-    let cancelled = false;
-    (async () => {
-      setLoading(true);
-      setMsg('');
+    const ac = new AbortController();
+    setLoading(true);
+    setMsg('');
+    const url = `/api/review/${encodeURIComponent(orderId)}/gene-knowledge`;
+    console.info(`[review/genedb] fetch start ${url}`, { genes: genesForFetch.length });
+
+    void (async () => {
+      const started = performance.now();
       try {
-        // Restrict to genes on this order's variants — avoids expanding the full
-        // sgNIPT all_target_variants panel on every Gene DB tab open.
         const res = await reviewApi.getGeneKnowledge(orderId, {
           lang,
           genes: genesCsv || undefined,
         });
-        if (cancelled) return;
+        if (ac.signal.aborted) return;
+        console.info(`[review/genedb] fetch ok (${Math.round(performance.now() - started)}ms)`);
         applyResponse(res);
       } catch (e) {
-        if (!cancelled) setMsg(e instanceof Error ? e.message : 'Failed to load gene knowledge');
+        if (ac.signal.aborted) return;
+        console.warn(`[review/genedb] fetch failed`, e);
+        setMsg(e instanceof Error ? e.message : 'Failed to load gene knowledge');
       } finally {
-        if (!cancelled) setLoading(false);
+        if (!ac.signal.aborted) setLoading(false);
       }
     })();
+
     return () => {
-      cancelled = true;
+      ac.abort();
     };
-  }, [orderId, lang, applyResponse, genesCsv]);
+  }, [orderId, lang, applyResponse, genesCsv, genesForFetch.length]);
 
   const openGeneEdit = (gene: string) => {
     const gk = genesMap[gene] ?? {};
@@ -307,8 +348,19 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
             </Select.Popover>
           </Select>
         </div>
+        <Button
+          size="sm"
+          variant={selectedOnly ? 'secondary' : 'ghost'}
+          onPress={() => setSelectedOnly((v) => !v)}
+        >
+          {selectedOnly
+            ? `Selected only (${selectedVariants.size || 'all if none'})`
+            : 'All variants'}
+        </Button>
         <span className="text-xs text-muted">
-          {loading ? 'Loading…' : `${filtered.length} rows · ${selectedGeneSymbols.length} selected genes`}
+          {loading
+            ? 'Loading…'
+            : `Showing ${Math.min(visibleCount, filtered.length)} of ${filtered.length} · ${selectedGeneSymbols.length} selected genes`}
         </span>
         <Button
           size="sm"
@@ -321,99 +373,132 @@ export function GeneDatabase({ orderId }: { orderId: string }) {
         {msg && <span className="text-xs text-muted">{msg}</span>}
       </div>
 
-      {filtered.length === 0 ? (
+      {loading && filtered.length === 0 ? (
+        <div className="flex min-h-[240px] flex-col items-center justify-center gap-3 text-muted">
+          <Spinner size="lg" color="accent" />
+          <p className="text-sm">Loading gene knowledge…</p>
+          <p className="text-xs font-mono">
+            GET /api/review/{orderId}/gene-knowledge
+            {genesForFetch.length > 0 ? ` (${genesForFetch.length} genes)` : ''}
+          </p>
+        </div>
+      ) : filtered.length === 0 ? (
         <p className="py-8 text-center text-muted">
-          {variants.length === 0 ? 'Load an order to see variants.' : 'No genes found.'}
+          {variants.length === 0
+            ? 'Load an order to see variants.'
+            : selectedOnly && selectedVariants.size === 0
+              ? 'No variants selected — turn off “Selected only”, or select variants in the Variants tab.'
+              : 'No genes found.'}
         </p>
       ) : (
-        <Table>
-          <Table.ScrollContainer>
-            <Table.Content aria-label="Gene knowledge">
-              <Table.Header>
-                <Table.Column isRowHeader>Gene</Table.Column>
-                <Table.Column>HGVSc / HGVSp</Table.Column>
-                <Table.Column>Transcript</Table.Column>
-                <Table.Column>Disorder</Table.Column>
-                <Table.Column>OMIM</Table.Column>
-                <Table.Column>Inheritance</Table.Column>
-                <Table.Column>Gene function</Table.Column>
-                <Table.Column>Disease association</Table.Column>
-                <Table.Column>Variant notes</Table.Column>
-                <Table.Column>Actions</Table.Column>
-              </Table.Header>
-              <Table.Body>
-                {filtered.map((r) => (
-                  <Table.Row key={`${r.gene}-${r.vk}`}>
-                    <Table.Cell>
-                      <span className="text-xs font-bold">{r.gene}</span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div className="text-xs font-mono leading-snug">
-                        <div>{r.hgvsc || '—'}</div>
-                        <div className="text-muted">{r.hgvsp || '—'}</div>
-                      </div>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span className="text-xs font-mono">{r.transcript || '—'}</span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span className="block max-w-[140px] truncate text-xs" title={String(r.gk.disorder ?? '')}>
+        <>
+          {loading && (
+            <div className="mb-2 flex items-center gap-2 text-xs text-muted">
+              <Spinner size="sm" color="current" />
+              Refreshing gene knowledge…
+            </div>
+          )}
+          <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  {[
+                    'Gene', 'HGVSc / HGVSp', 'Transcript', 'Disorder', 'OMIM',
+                    'Inheritance', 'Gene function', 'Disease association', 'Variant notes', 'Actions',
+                  ].map((h) => (
+                    <th
+                      key={h}
+                      className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] font-semibold uppercase tracking-wide text-muted"
+                    >
+                      {h}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((r) => (
+                  <tr key={`${r.gene}-${r.vk}`} className="border-b border-border hover:bg-accent/5">
+                    <td className="px-2.5 py-1.5 font-bold whitespace-nowrap">{r.gene}</td>
+                    <td className="px-2.5 py-1.5 font-mono leading-snug">
+                      <div>{r.hgvsc || '—'}</div>
+                      <div className="text-muted">{r.hgvsp || '—'}</div>
+                    </td>
+                    <td className="px-2.5 py-1.5 font-mono whitespace-nowrap">{r.transcript || '—'}</td>
+                    <td className="px-2.5 py-1.5">
+                      <span className="block max-w-[140px] truncate" title={String(r.gk.disorder ?? '')}>
                         {String(r.gk.disorder || '—')}
                       </span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span className="text-xs">{String(r.gk.omim_number || '—')}</span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <span className="text-xs">{String(r.gk.inheritance || '—')}</span>
-                    </Table.Cell>
-                    <Table.Cell>
+                    </td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">{String(r.gk.omim_number || '—')}</td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">{String(r.gk.inheritance || '—')}</td>
+                    <td className="px-2.5 py-1.5">
                       <span
-                        className="block max-w-[180px] truncate text-xs text-muted"
+                        className="block max-w-[180px] truncate text-muted"
                         title={String(r.gk.function_summary ?? '')}
                       >
                         {String(r.gk.function_summary || '—')}
                       </span>
-                    </Table.Cell>
-                    <Table.Cell>
+                    </td>
+                    <td className="px-2.5 py-1.5">
                       <span
-                        className="block max-w-[180px] truncate text-xs text-muted"
+                        className="block max-w-[180px] truncate text-muted"
                         title={String(r.gk.disease_association ?? '')}
                       >
                         {String(r.gk.disease_association || '—')}
                       </span>
-                    </Table.Cell>
-                    <Table.Cell>
+                    </td>
+                    <td className="px-2.5 py-1.5">
                       <span
-                        className="block max-w-[140px] truncate text-xs text-muted"
+                        className="block max-w-[140px] truncate text-muted"
                         title={String(r.vkRow.variant_notes ?? '')}
                       >
                         {String(r.vkRow.variant_notes || '—')}
                       </span>
-                    </Table.Cell>
-                    <Table.Cell>
-                      <div className="flex flex-col gap-1">
-                        <Button size="sm" variant="ghost" onPress={() => openGeneEdit(r.gene)}>
+                    </td>
+                    <td className="px-2.5 py-1.5 whitespace-nowrap">
+                      <div className="flex flex-col gap-0.5 items-start">
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-accent hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                          onClick={() => openGeneEdit(r.gene)}
+                        >
                           Edit gene
-                        </Button>
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onPress={() => {
+                        </button>
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-accent hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                          onClick={() => {
                             setEditVk(r.vk);
                             setEditNotes(String(r.vkRow.variant_notes ?? ''));
                           }}
                         >
                           Edit notes
-                        </Button>
+                        </button>
                       </div>
-                    </Table.Cell>
-                  </Table.Row>
+                    </td>
+                  </tr>
                 ))}
-              </Table.Body>
-            </Table.Content>
-          </Table.ScrollContainer>
-        </Table>
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
+              >
+                Show more ({filtered.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
+          {genesForFetch.length >= MAX_GENES_FOR_FETCH && (
+            <p className="mt-2 text-xs text-muted">
+              Gene knowledge fetch capped at {MAX_GENES_FOR_FETCH} genes. Select specific variants
+              for targeted fetch / translate.
+            </p>
+          )}
+        </>
       )}
 
       <Modal isOpen={editGene != null} onOpenChange={(open) => !open && setEditGene(null)}>

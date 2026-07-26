@@ -1,10 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
   Button,
-  Checkbox,
-  Chip,
   Input,
   ListBox,
   Select,
@@ -25,29 +23,11 @@ type OriginTab = 'all' | 'fetal' | 'plp' | 'maternal';
 type SortKey = 'gene' | 'hgvsc' | 'hgvsp' | 'origin' | 'vaf' | 'clinvar' | 'acmg' | 'confidence';
 type SortDir = 'asc' | 'desc' | null;
 
-function TableCheckbox({
-  isSelected,
-  onChange,
-  'aria-label': ariaLabel,
-}: {
-  isSelected: boolean;
-  onChange: (selected: boolean) => void;
-  'aria-label': string;
-}) {
-  return (
-    <Checkbox
-      isSelected={isSelected}
-      onChange={onChange}
-      aria-label={ariaLabel}
-      className="inline-flex justify-center"
-    >
-      <Checkbox.Content>
-        <Checkbox.Control>
-          <Checkbox.Indicator />
-        </Checkbox.Control>
-      </Checkbox.Content>
-    </Checkbox>
-  );
+/** Keep DOM light — sgNIPT tables are often 1k–20k rows. */
+const PAGE_SIZE = 100;
+
+function isNoiseOrigin(origin: string): boolean {
+  return origin === 'noise' || origin === 'ambiguous' || origin === 'unknown';
 }
 
 function SortableTh({
@@ -84,27 +64,51 @@ function fmtAf(n: number | null | undefined): string {
   return n.toExponential(2);
 }
 
-function clinvarColor(label: string): 'danger' | 'warning' | 'default' | 'success' {
+function badgeClass(kind: 'danger' | 'warning' | 'success' | 'sky' | 'muted'): string {
+  switch (kind) {
+    case 'danger': return 'bg-danger/15 text-danger';
+    case 'warning': return 'bg-warning/15 text-warning';
+    case 'success': return 'bg-success/15 text-success';
+    case 'sky': return 'bg-sky-500/15 text-sky-700 dark:text-sky-300';
+    default: return 'bg-default text-muted';
+  }
+}
+
+function SoftBadge({
+  children,
+  kind = 'muted',
+}: {
+  children: React.ReactNode;
+  kind?: 'danger' | 'warning' | 'success' | 'sky' | 'muted';
+}) {
+  return (
+    <span className={`inline-flex whitespace-nowrap rounded px-1.5 py-0.5 text-[10px] font-medium ${badgeClass(kind)}`}>
+      {children}
+    </span>
+  );
+}
+
+function clinvarKind(label: string): 'danger' | 'warning' | 'muted' | 'success' {
   const l = label.toLowerCase();
   if (l.includes('pathogenic') && !l.includes('likely')) return 'danger';
   if (l.includes('likely pathogenic')) return 'warning';
-  if (l.includes('uncertain') || l.includes('vus')) return 'default';
+  if (l.includes('uncertain') || l.includes('vus')) return 'muted';
   return 'success';
 }
 
-function acmgColor(cls: string): 'danger' | 'warning' | 'default' | 'success' {
+function acmgKind(cls: string): 'danger' | 'warning' | 'muted' | 'success' {
   const c = cls.toLowerCase();
   if (c.includes('pathogenic') && !c.includes('likely')) return 'danger';
   if (c.includes('likely pathogenic') || c === 'lp') return 'warning';
   if (c.includes('benign')) return 'success';
-  return 'default';
+  return 'muted';
 }
 
-function originChipColor(origin: string): 'warning' | 'default' | 'success' {
-  if (isFetalOrigin(origin)) return 'warning';
-  if (origin === 'maternal_het') return 'default';
+function originKind(origin: string): 'warning' | 'muted' | 'success' | 'sky' {
+  if (isFetalOrigin(origin)) return 'sky';
+  if (origin === 'maternal_het') return 'muted';
   if (origin === 'maternal_hom') return 'success';
-  return 'default';
+  return 'muted';
 }
 
 function buildTags(v: Variant): string[] {
@@ -122,12 +126,18 @@ function buildTags(v: Variant): string[] {
 }
 
 export function SgniptVariantTable({ orderId }: { orderId: string }) {
-  const {
-    reviewData, selectedVariants, toggleVariant, selectAll, clearSelection,
-    setVariantComment, variantComments, setReviewData,
-  } = useReviewStore();
+  const reviewData = useReviewStore((s) => s.reviewData);
+  const selectedVariants = useReviewStore((s) => s.selectedVariants);
+  const variantComments = useReviewStore((s) => s.variantComments);
+  const toggleVariant = useReviewStore((s) => s.toggleVariant);
+  const selectAll = useReviewStore((s) => s.selectAll);
+  const clearSelection = useReviewStore((s) => s.clearSelection);
+  const setVariantComment = useReviewStore((s) => s.setVariantComment);
+  const setReviewData = useReviewStore((s) => s.setReviewData);
 
-  const [tab, setTab] = useState<OriginTab>('all');
+  // Fetal-first: much smaller than "All" (noise-heavy) and clinically primary.
+  const [tab, setTab] = useState<OriginTab>('fetal');
+  const [hideNoise, setHideNoise] = useState(true);
   const [search, setSearch] = useState('');
   const [geneFilter, setGeneFilter] = useState('');
   const [confFilter, setConfFilter] = useState('');
@@ -135,6 +145,7 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
   const [sortDir, setSortDir] = useState<SortDir>(null);
   const [classifying, setClassifying] = useState(false);
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
 
   const variants = reviewData?.variants ?? [];
   const va = reviewData?.variant_analysis ?? {};
@@ -172,6 +183,11 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
     return variants.length;
   }, [variants, vaSummary]);
 
+  const noiseCount = useMemo(
+    () => variants.filter((v) => isNoiseOrigin(String(v.origin || ''))).length,
+    [variants],
+  );
+
   const geneOptions = useMemo(() => {
     const genes = [...new Set(variants.map((v) => v.gene).filter(Boolean))].sort() as string[];
     return [{ value: '', label: 'All genes' }, ...genes.map((g) => ({ value: g, label: g }))];
@@ -181,16 +197,25 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
     const pathoDetail = Array.isArray(va.pathogenic_details)
       ? (va.pathogenic_details as Variant[])
       : null;
+    let list: Variant[];
     if (tab === 'plp') {
-      if (pathoDetail && pathoDetail.length) return pathoDetail;
-      return variants.filter((v) =>
-        isPathogenicSig(String(v.clinvar_sig_primary || v.acmg_classification || '')),
-      );
+      list = pathoDetail && pathoDetail.length
+        ? pathoDetail
+        : variants.filter((v) =>
+            isPathogenicSig(String(v.clinvar_sig_primary || v.acmg_classification || '')),
+          );
+    } else if (tab === 'fetal') {
+      list = variants.filter((v) => isFetalOrigin(String(v.origin || '')));
+    } else if (tab === 'maternal') {
+      list = variants.filter((v) => isMaternalOrigin(String(v.origin || '')));
+    } else {
+      list = variants;
     }
-    if (tab === 'fetal') return variants.filter((v) => isFetalOrigin(String(v.origin || '')));
-    if (tab === 'maternal') return variants.filter((v) => isMaternalOrigin(String(v.origin || '')));
-    return variants;
-  }, [variants, va.pathogenic_details, tab]);
+    if (tab === 'all' && hideNoise) {
+      list = list.filter((v) => !isNoiseOrigin(String(v.origin || '')));
+    }
+    return list;
+  }, [variants, va.pathogenic_details, tab, hideNoise]);
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase();
@@ -229,6 +254,17 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
     });
   }, [filtered, sortKey, sortDir]);
 
+  // Reset window when the working set changes.
+  useEffect(() => {
+    setVisibleCount(PAGE_SIZE);
+  }, [tab, search, geneFilter, confFilter, sortKey, sortDir, hideNoise, orderId]);
+
+  const pageRows = useMemo(
+    () => sorted.slice(0, visibleCount),
+    [sorted, visibleCount],
+  );
+  const hasMore = visibleCount < sorted.length;
+
   const handleSort = (k: SortKey) => {
     if (sortKey === k) {
       setSortDir((d) => (d === 'asc' ? 'desc' : d === 'desc' ? null : 'asc'));
@@ -252,8 +288,9 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
     try {
       const res = await reviewApi.classify(orderId, { variants: toClassify });
       if (reviewData) {
+        const byId = new Map(res.results.map((r) => [r.variant_id, r]));
         const updated = reviewData.variants.map((v) => {
-          const r = res.results.find((x) => x.variant_id === v.variant_id);
+          const r = byId.get(v.variant_id);
           return r ? { ...v, ...r } : v;
         });
         setReviewData({ ...reviewData, variants: updated });
@@ -263,14 +300,19 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
     }
   };
 
-  const visibleIds = sorted.map((v) => v.variant_id);
-  const allVisibleSelected = visibleIds.length > 0 && visibleIds.every((id) => selectedVariants.has(id));
+  const visibleIds = useMemo(() => sorted.map((v) => v.variant_id), [sorted]);
+  const allVisibleSelected = useMemo(
+    () => visibleIds.length > 0 && visibleIds.every((id) => selectedVariants.has(id)),
+    [visibleIds, selectedVariants],
+  );
   const thProps = { current: sortKey, dir: sortDir, onSort: handleSort };
   const showConfFilter = tab === 'all' || tab === 'fetal';
+  const detailVariant = detailId
+    ? variants.find((x) => x.variant_id === detailId) ?? null
+    : null;
 
   return (
     <div>
-      {/* Stat cards */}
       <div className="mb-3 flex flex-wrap gap-2.5">
         {[
           { label: 'Total Variants', value: totalCount, className: '' },
@@ -282,13 +324,12 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
             key={c.label}
             className="flex min-w-[120px] flex-1 flex-col gap-0.5 rounded-xl border border-border bg-surface px-3.5 py-2.5"
           >
-            <span className={`text-[22px] font-bold leading-tight ${c.className}`}>{c.value}</span>
+            <span className={`text-[22px] font-normal tabular-nums leading-tight ${c.className}`}>{c.value}</span>
             <span className="text-[11px] font-semibold uppercase tracking-wide text-muted">{c.label}</span>
           </div>
         ))}
       </div>
 
-      {/* Origin tabs */}
       <Tabs
         selectedKey={tab}
         onSelectionChange={(key) => setTab(key as OriginTab)}
@@ -296,10 +337,6 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
       >
         <Tabs.ListContainer>
           <Tabs.List aria-label="sgNIPT origin filters">
-            <Tabs.Tab id="all" className="relative">
-              All
-              <Tabs.Indicator />
-            </Tabs.Tab>
             <Tabs.Tab id="fetal" className="relative">
               Fetal{fetalCount > 0 ? ` (${fetalCount})` : ''}
               <Tabs.Indicator />
@@ -312,11 +349,14 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
               Maternal
               <Tabs.Indicator />
             </Tabs.Tab>
+            <Tabs.Tab id="all" className="relative">
+              All
+              <Tabs.Indicator />
+            </Tabs.Tab>
           </Tabs.List>
         </Tabs.ListContainer>
       </Tabs>
 
-      {/* Toolbar */}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search gene, position, disease…"
@@ -361,8 +401,18 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
           </>
         )}
 
+        {tab === 'all' && (
+          <Button
+            size="sm"
+            variant={hideNoise ? 'secondary' : 'ghost'}
+            onPress={() => setHideNoise((v) => !v)}
+          >
+            {hideNoise ? `Noise hidden (${noiseCount})` : 'Showing noise'}
+          </Button>
+        )}
+
         <span className="whitespace-nowrap text-[11px] text-muted">
-          {sorted.length} variant{sorted.length !== 1 ? 's' : ''}
+          Showing {Math.min(visibleCount, sorted.length)} of {sorted.length}
         </span>
 
         <div className="ml-auto flex flex-wrap items-center gap-1.5">
@@ -390,154 +440,152 @@ export function SgniptVariantTable({ orderId }: { orderId: string }) {
         </div>
       </div>
 
-      {detailId && (() => {
-        const v = variants.find((x) => x.variant_id === detailId);
-        return v ? <SgniptDetail variant={v} onClose={() => setDetailId(null)} /> : null;
-      })()}
+      {detailVariant && (
+        <SgniptDetail
+          variant={detailVariant}
+          comment={variantComments[detailVariant.variant_id]}
+          onComment={(patch) => setVariantComment(detailVariant.variant_id, patch)}
+          onClose={() => setDetailId(null)}
+        />
+      )}
 
       {sorted.length === 0 ? (
         <p className="py-8 text-center text-muted">No variants match the current filters.</p>
       ) : (
-        <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
-          <table className="w-full border-collapse text-xs">
-            <thead>
-              <tr className="border-b border-border">
-                <th className="sticky top-0 z-10 w-10 bg-surface px-2.5 py-1.5 text-center">
-                  <TableCheckbox
-                    isSelected={allVisibleSelected}
-                    aria-label="Select all visible variants"
-                    onChange={(checked) => (checked ? selectAll(visibleIds) : clearSelection())}
-                  />
-                </th>
-                <SortableTh label="Gene" sortKey="gene" {...thProps} />
-                <SortableTh label="HGVSc" sortKey="hgvsc" {...thProps} />
-                <SortableTh label="HGVSp" sortKey="hgvsp" {...thProps} />
-                <SortableTh label="Origin" sortKey="origin" {...thProps} />
-                <SortableTh label="VAF" sortKey="vaf" {...thProps} />
-                <SortableTh label="ClinVar" sortKey="clinvar" {...thProps} />
-                <SortableTh label="ACMG" sortKey="acmg" {...thProps} />
-                <SortableTh label="Confidence" sortKey="confidence" {...thProps} />
-                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Tags</th>
-                <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Action</th>
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((v) => {
-                const selected = selectedVariants.has(v.variant_id);
-                const expanded = detailId === v.variant_id;
-                const fetal = isFetalOrigin(String(v.origin || ''));
-                const rowClass = selected
-                  ? 'bg-accent/10'
-                  : expanded
-                    ? 'bg-accent/5'
-                    : fetal
-                      ? 'bg-sky-500/[.04] hover:bg-accent/5'
-                      : 'hover:bg-accent/5';
-                const cv = String(v.clinvar_sig_primary || '');
-                const acmg = String(v.acmg_classification || '');
-                const origin = String(v.origin || '');
-                const tags = buildTags(v);
-                return (
-                  <tr key={v.variant_id} className={`border-b border-border ${rowClass}`}>
-                    <td className="px-2.5 py-1 text-center">
-                      <TableCheckbox
-                        isSelected={selected}
-                        aria-label={`Select ${v.gene ?? 'variant'}`}
-                        onChange={() => toggleVariant(v.variant_id)}
-                      />
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1"><strong>{v.gene || '—'}</strong></td>
-                    <td className="whitespace-nowrap px-2.5 py-1 font-mono">
-                      <code>{v.hgvsc || (v.chrom && v.pos != null ? `${v.chrom}:${v.pos}` : '—')}</code>
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1 font-mono">
-                      {v.hgvsp ? <code>{v.hgvsp}</code> : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1">
-                      {origin ? (
-                        <Chip color={originChipColor(origin)} size="sm" variant="soft">
-                          <Chip.Label>{sgniptOriginLabel(origin)}</Chip.Label>
-                        </Chip>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">{fmtVaf(v.vaf)}</td>
-                    <td className="whitespace-nowrap px-2.5 py-1">
-                      {cv ? (
-                        <Chip color={clinvarColor(cv)} size="sm" variant="soft">
-                          <Chip.Label>{cv}</Chip.Label>
-                        </Chip>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1">
-                      {acmg ? (
-                        <Chip color={acmgColor(acmg)} size="sm" variant="soft">
-                          <Chip.Label>{acmg.replace(/_/g, ' ')}</Chip.Label>
-                        </Chip>
-                      ) : <span className="text-muted">—</span>}
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1 text-[11px] capitalize">
-                      {String(v.confidence || '—')}
-                    </td>
-                    <td className="px-2.5 py-1">
-                      <div className="flex flex-wrap gap-1">
-                        {tags.length === 0 ? (
-                          <span className="text-muted">—</span>
+        <>
+          <div className="max-h-[60vh] overflow-auto rounded-md border border-border bg-surface">
+            <table className="w-full border-collapse text-xs">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="sticky top-0 z-10 w-10 bg-surface px-2.5 py-1.5 text-center">
+                    <input
+                      type="checkbox"
+                      checked={allVisibleSelected}
+                      aria-label="Select all visible variants"
+                      onChange={(e) => (e.target.checked ? selectAll(visibleIds) : clearSelection())}
+                      className="size-3.5 accent-[var(--accent)]"
+                    />
+                  </th>
+                  <SortableTh label="Gene" sortKey="gene" {...thProps} />
+                  <SortableTh label="HGVSc" sortKey="hgvsc" {...thProps} />
+                  <SortableTh label="HGVSp" sortKey="hgvsp" {...thProps} />
+                  <SortableTh label="Origin" sortKey="origin" {...thProps} />
+                  <SortableTh label="VAF" sortKey="vaf" {...thProps} />
+                  <SortableTh label="ClinVar" sortKey="clinvar" {...thProps} />
+                  <SortableTh label="ACMG" sortKey="acmg" {...thProps} />
+                  <SortableTh label="Confidence" sortKey="confidence" {...thProps} />
+                  <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Tags</th>
+                  <th className="sticky top-0 z-10 bg-surface px-2.5 py-1.5 text-left text-[11px] uppercase tracking-wide text-muted">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {pageRows.map((v) => {
+                  const selected = selectedVariants.has(v.variant_id);
+                  const expanded = detailId === v.variant_id;
+                  const fetal = isFetalOrigin(String(v.origin || ''));
+                  const rowClass = selected
+                    ? 'bg-accent/10'
+                    : expanded
+                      ? 'bg-accent/5'
+                      : fetal
+                        ? 'bg-sky-500/[.04] hover:bg-accent/5'
+                        : 'hover:bg-accent/5';
+                  const cv = String(v.clinvar_sig_primary || '');
+                  const acmg = String(v.acmg_classification || '');
+                  const origin = String(v.origin || '');
+                  const tags = buildTags(v);
+                  const override = variantComments[v.variant_id]?.classification;
+                  return (
+                    <tr key={v.variant_id} className={`border-b border-border ${rowClass}`}>
+                      <td className="px-2.5 py-1 text-center">
+                        <input
+                          type="checkbox"
+                          checked={selected}
+                          aria-label={`Select ${v.gene ?? 'variant'}`}
+                          onChange={() => toggleVariant(v.variant_id)}
+                          className="size-3.5 accent-[var(--accent)]"
+                        />
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1"><strong>{v.gene || '—'}</strong></td>
+                      <td className="whitespace-nowrap px-2.5 py-1 font-mono">
+                        <code>{v.hgvsc || (v.chrom && v.pos != null ? `${v.chrom}:${v.pos}` : '—')}</code>
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1 font-mono">
+                        {v.hgvsp ? <code>{v.hgvsp}</code> : <span className="text-muted">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1">
+                        {origin ? (
+                          <SoftBadge kind={originKind(origin)}>{sgniptOriginLabel(origin)}</SoftBadge>
+                        ) : <span className="text-muted">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1 font-mono text-[11px]">{fmtVaf(v.vaf)}</td>
+                      <td className="whitespace-nowrap px-2.5 py-1">
+                        {cv ? <SoftBadge kind={clinvarKind(cv)}>{cv}</SoftBadge> : <span className="text-muted">—</span>}
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1">
+                        {override ? (
+                          <SoftBadge kind={acmgKind(override)}>{override.replace(/_/g, ' ')} *</SoftBadge>
+                        ) : acmg ? (
+                          <SoftBadge kind={acmgKind(acmg)}>{acmg.replace(/_/g, ' ')}</SoftBadge>
                         ) : (
-                          tags.map((t) => (
-                            <Chip key={t} size="sm" variant="soft">
-                              <Chip.Label>{t}</Chip.Label>
-                            </Chip>
-                          ))
+                          <span className="text-muted">—</span>
                         )}
-                      </div>
-                    </td>
-                    <td className="whitespace-nowrap px-2.5 py-1">
-                      <div className="flex flex-col gap-1">
-                        <Button
-                          size="sm"
-                          variant="ghost"
-                          onPress={() => setDetailId((prev) => (prev === v.variant_id ? null : v.variant_id))}
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1 text-[11px] capitalize">
+                        {String(v.confidence || '—')}
+                      </td>
+                      <td className="px-2.5 py-1">
+                        <div className="flex flex-wrap gap-1">
+                          {tags.length === 0 ? (
+                            <span className="text-muted">—</span>
+                          ) : (
+                            tags.map((t) => <SoftBadge key={t}>{t}</SoftBadge>)
+                          )}
+                        </div>
+                      </td>
+                      <td className="whitespace-nowrap px-2.5 py-1">
+                        <button
+                          type="button"
+                          className="text-[11px] font-medium text-accent hover:underline bg-transparent border-0 p-0 cursor-pointer"
+                          onClick={() => setDetailId((prev) => (prev === v.variant_id ? null : v.variant_id))}
                         >
                           {expanded ? 'Hide' : 'Detail'}
-                        </Button>
-                        <Select
-                          selectedKey={variantComments[v.variant_id]?.classification || '__auto__'}
-                          onSelectionChange={(key) =>
-                            setVariantComment(v.variant_id, {
-                              classification: key === '__auto__' ? undefined : (String(key) as AcmgClass),
-                            })
-                          }
-                          aria-label="Override classification"
-                        >
-                          <Select.Trigger className="min-w-[100px]">
-                            <Select.Value />
-                            <Select.Indicator />
-                          </Select.Trigger>
-                          <Select.Popover>
-                            <ListBox>
-                              <ListBox.Item id="__auto__" textValue="auto">— auto —</ListBox.Item>
-                              {(['Pathogenic', 'Likely_pathogenic', 'Uncertain_significance', 'Likely_benign', 'Benign'] as const).map((c) => (
-                                <ListBox.Item key={c} id={c} textValue={c}>
-                                  {c.replace(/_/g, ' ')}
-                                </ListBox.Item>
-                              ))}
-                            </ListBox>
-                          </Select.Popover>
-                        </Select>
-                      </div>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
-        </div>
+                        </button>
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+          {hasMore && (
+            <div className="mt-2 flex justify-center">
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => setVisibleCount((n) => n + PAGE_SIZE)}
+              >
+                Show more ({sorted.length - visibleCount} remaining)
+              </Button>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
 }
 
-function SgniptDetail({ variant: v, onClose }: { variant: Variant; onClose: () => void }) {
+function SgniptDetail({
+  variant: v,
+  comment,
+  onComment,
+  onClose,
+}: {
+  variant: Variant;
+  comment?: { classification?: AcmgClass; comment?: string };
+  onComment: (patch: { classification?: AcmgClass }) => void;
+  onClose: () => void;
+}) {
   return (
     <div className="mb-3 rounded-md border border-border bg-surface p-3">
       <div className="mb-2 flex items-start justify-between gap-2">
@@ -558,6 +606,33 @@ function SgniptDetail({ variant: v, onClose }: { variant: Variant; onClose: () =
         <dt className="font-semibold text-muted">Confidence</dt><dd className="m-0 capitalize">{String(v.confidence || '—')}</dd>
         <dt className="font-semibold text-muted">ClinVar</dt><dd className="m-0">{String(v.clinvar_sig_primary || '—')}</dd>
         <dt className="font-semibold text-muted">ACMG</dt><dd className="m-0">{String(v.acmg_classification || '—').replace(/_/g, ' ')}</dd>
+        <dt className="font-semibold text-muted">Override</dt>
+        <dd className="m-0">
+          <Select
+            selectedKey={comment?.classification || '__auto__'}
+            onSelectionChange={(key) =>
+              onComment({
+                classification: key === '__auto__' ? undefined : (String(key) as AcmgClass),
+              })
+            }
+            aria-label="Override classification"
+          >
+            <Select.Trigger className="min-w-[140px]">
+              <Select.Value />
+              <Select.Indicator />
+            </Select.Trigger>
+            <Select.Popover>
+              <ListBox>
+                <ListBox.Item id="__auto__" textValue="auto">— auto —</ListBox.Item>
+                {(['Pathogenic', 'Likely_pathogenic', 'Uncertain_significance', 'Likely_benign', 'Benign'] as const).map((c) => (
+                  <ListBox.Item key={c} id={c} textValue={c}>
+                    {c.replace(/_/g, ' ')}
+                  </ListBox.Item>
+                ))}
+              </ListBox>
+            </Select.Popover>
+          </Select>
+        </dd>
         <dt className="font-semibold text-muted">gnomAD AF</dt><dd className="m-0 font-mono">{fmtAf(v.gnomad_af)}</dd>
         <dt className="font-semibold text-muted">Effect</dt><dd className="m-0">{v.effect || '—'}</dd>
         <dt className="font-semibold text-muted">Disease</dt>

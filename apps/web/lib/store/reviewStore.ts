@@ -20,6 +20,8 @@ interface ReviewStore {
   coverageNav: CoverageNavRequest | null;
 
   setReviewData: (data: ReviewData) => void;
+  /** One Zustand commit — avoids double full-table re-render on sgNIPT load. */
+  setReviewDataAndSelection: (data: ReviewData, selectedIds: string[]) => void;
   patchReviewData: (patch: Partial<ReviewData>) => void;
   toggleVariant: (id: string) => void;
   selectAll: (ids: string[]) => void;
@@ -37,6 +39,8 @@ export const useReviewStore = create<ReviewStore>((set) => ({
   coverageNav: null,
 
   setReviewData: (data) => set({ reviewData: data }),
+  setReviewDataAndSelection: (data, selectedIds) =>
+    set({ reviewData: data, selectedVariants: new Set(selectedIds) }),
   patchReviewData: (patch) =>
     set((s) => (s.reviewData ? { reviewData: { ...s.reviewData, ...patch } } : {})),
 

@@ -11,16 +11,26 @@ export class ApiError extends Error {
   }
 }
 
+type RequestOptions = {
+  body?: unknown;
+  signal?: AbortSignal;
+  /** Bypass HTTP cache — useful for large/debug fetches visible in DevTools. */
+  cache?: RequestCache;
+};
+
 async function request<T>(
   method: string,
   path: string,
-  body?: unknown,
+  options: RequestOptions = {},
 ): Promise<T> {
+  const { body, signal, cache } = options;
   const res = await fetch(`${API_BASE}${path}`, {
     method,
     headers: { 'Content-Type': 'application/json' },
     credentials: 'include', // sends httpOnly cookie
     body: body !== undefined ? JSON.stringify(body) : undefined,
+    signal,
+    cache,
   });
 
   if (!res.ok) {
@@ -66,10 +76,17 @@ async function requestText(path: string): Promise<string> {
 }
 
 export const api = {
-  get: <T>(path: string) => request<T>('GET', path),
+  get: <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
+    request<T>('GET', path, opts),
   getText: (path: string) => requestText(path),
-  post: <T>(path: string, body?: unknown) => request<T>('POST', path, body),
-  put: <T>(path: string, body?: unknown) => request<T>('PUT', path, body),
-  patch: <T>(path: string, body?: unknown) => request<T>('PATCH', path, body),
-  delete: <T>(path: string) => request<T>('DELETE', path),
+  post: <T>(path: string, body?: unknown, opts?: Omit<RequestOptions, 'body'>) =>
+    request<T>('POST', path, { ...opts, body }),
+  put: <T>(path: string, body?: unknown, opts?: Omit<RequestOptions, 'body'>) =>
+    request<T>('PUT', path, { ...opts, body }),
+  patch: <T>(path: string, body?: unknown, opts?: Omit<RequestOptions, 'body'>) =>
+    request<T>('PATCH', path, { ...opts, body }),
+  delete: <T>(path: string, opts?: Omit<RequestOptions, 'body'>) =>
+    request<T>('DELETE', path, opts),
 };
+
+export { API_BASE };

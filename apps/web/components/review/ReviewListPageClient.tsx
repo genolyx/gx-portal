@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from 'react';
 import { useRouter } from 'next/navigation';
 import { ArrowRight } from 'lucide-react';
-import { Button, Link, Table } from '@heroui/react';
+import { Button, Link, Spinner, Table } from '@heroui/react';
 import { ordersApi } from '../../lib/api/orders';
 import { PageHeader } from '../ui/PageHeader';
 import { OrderStatusBadge } from '../ui/OrderStatusBadge';
@@ -37,7 +37,10 @@ export function ReviewListPageClient() {
       />
 
       {loading ? (
-        <p className="py-4 text-sm text-muted">Loading…</p>
+        <div className="flex items-center justify-center gap-2 py-16 text-muted">
+          <Spinner size="md" color="current" />
+          <span className="text-sm">Loading orders…</span>
+        </div>
       ) : orders.length === 0 ? (
         <p className="py-4 text-sm text-muted">No orders ready for review.</p>
       ) : (

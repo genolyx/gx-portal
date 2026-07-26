@@ -1,10 +1,15 @@
-import { api } from './client';
+import { api, API_BASE } from './client';
 import type {
   ReviewData, ClassifyRequest, ClassifyResponse,
   CoverageContext, GeneKnowledgeResponse,
   GeneKnowledgeSaveRequest, VariantKnowledgeSaveRequest,
   ReportBody, ReportPreviewResponse,
 } from '@gx-portal/types';
+
+/** Browser-visible URL for the review result payload (Network tab). */
+export function reviewResultUrl(orderId: string): string {
+  return `${API_BASE}/review/${encodeURIComponent(orderId)}/result`;
+}
 
 /** Relative analysis artifact URL (HTML IGV reports, SVGs, PGx files). */
 export function orderArtifactUrl(orderId: string, relPath: string): string {
@@ -26,7 +31,15 @@ export type GeneKnowledgeQuery = {
 };
 
 export const reviewApi = {
-  getResult: (orderId: string) => api.get<ReviewData>(`/review/${orderId}/result`),
+  /**
+   * Client-side only: fetches the full analysis result.
+   * Uses cache: 'no-store' so timing is visible in DevTools → Network.
+   */
+  getResult: (orderId: string, opts?: { signal?: AbortSignal }) =>
+    api.get<ReviewData>(`/review/${encodeURIComponent(orderId)}/result`, {
+      signal: opts?.signal,
+      cache: 'no-store',
+    }),
   classify: (orderId: string, body: ClassifyRequest) =>
     api.post<ClassifyResponse>(`/review/${orderId}/classify-variants`, body),
   getCoverageContext: (orderId: string) =>

@@ -1,9 +1,9 @@
 'use client';
 
-import { useEffect, useMemo, useState } from 'react';
-import { Accordion, Card, Chip, Disclosure, Tabs } from '@heroui/react';
+import { startTransition, useEffect, useMemo, useState } from 'react';
+import { Accordion, Button, Card, Chip, Disclosure, Spinner, Tabs } from '@heroui/react';
 import { catalogApi } from '../../lib/api/catalog';
-import { reviewApi } from '../../lib/api/review';
+import { reviewApi, reviewResultUrl } from '../../lib/api/review';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { getVisibleReviewTabs, reviewOrderKind, type ReviewTabId } from '../../lib/review-tabs';
 import { isSgniptReviewData, normalizeSgniptReviewData } from '../../lib/sgnipt-normalize';
@@ -18,6 +18,39 @@ import { ReportBuilder } from './ReportBuilder/ReportBuilder';
 import { GeneDatabase } from './GeneDatabase/GeneDatabase';
 import { ArtifactHtmlModal } from './ArtifactHtmlModal';
 import type { QcSummary, ReviewData, VariantStats } from '@gx-portal/types';
+
+function ReviewLoadingState({
+  orderId,
+  elapsedMs,
+}: {
+  orderId: string;
+  elapsedMs: number;
+}) {
+  const seconds = (elapsedMs / 1000).toFixed(1);
+  return (
+    <div className="flex min-h-[50vh] flex-col items-center justify-center gap-4 px-4">
+      <Spinner size="lg" color="accent" />
+      <div className="text-center max-w-lg">
+        <p className="text-sm font-medium">Loading review data…</p>
+        <p className="mt-1.5 text-xs text-muted break-all font-mono">
+          GET {reviewResultUrl(orderId)}
+        </p>
+        <p className="mt-1 text-xs text-muted tabular-nums">
+          {seconds}s · check DevTools → Network for timing
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function TabPanelSpinner({ label }: { label: string }) {
+  return (
+    <div className="flex min-h-[280px] flex-col items-center justify-center gap-3 text-muted">
+      <Spinner size="lg" color="accent" />
+      <p className="text-sm">Loading {label}…</p>
+    </div>
+  );
+}
 
 const ALL_TABS: { id: ReviewTabId; label: string }[] = [
   { id: 'variants',  label: 'Variants'      },
@@ -409,35 +442,99 @@ function SgniptBanner({ rd }: { rd: ReviewData }) {
 export function ReviewPageClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
   const [error, setError]     = useState('');
+  const [elapsedMs, setElapsedMs] = useState(0);
   const [tab, setTab]         = useState<ReviewTabId>('variants');
-  /** Keep visited tab panels mounted so gene-knowledge / coverage don't refetch. */
-  const [visitedTabs, setVisitedTabs] = useState<Set<ReviewTabId>>(() => new Set(['variants']));
+  /**
+   * Panels stay mounted after first open (hidden when inactive) so Coverage / Gene DB
+   * don't re-fetch. First open is deferred so a Spinner can paint before heavy mount.
+   */
+  const [mountedTabs, setMountedTabs] = useState<Set<ReviewTabId>>(() => new Set(['variants']));
+  /** Tab waiting to mount — show Spinner until deferred mount runs. */
+  const [pendingTab, setPendingTab] = useState<ReviewTabId | null>(null);
   const [panelsById, setPanelsById] = useState<Record<string, { category?: string }>>({});
   const [apoeIgvPath, setApoeIgvPath] = useState<string | null>(null);
-  const { setReviewData, reviewData, reset, patchReviewData, selectAll } = useReviewStore();
+  const { setReviewDataAndSelection, reviewData, reset, patchReviewData } = useReviewStore();
 
+  // After Spinner paints, mount the pending tab panel (avoids blank freeze on first open).
   useEffect(() => {
+    if (!pendingTab) return;
+    let cancelled = false;
+    const id = window.setTimeout(() => {
+      if (cancelled) return;
+      setMountedTabs((prev) => {
+        if (prev.has(pendingTab)) return prev;
+        const next = new Set(prev);
+        next.add(pendingTab);
+        return next;
+      });
+      setPendingTab(null);
+    }, 50);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [pendingTab]);
+
+  // Client-side fetch — visible in DevTools Network as GET /api/review/:id/result
+  useEffect(() => {
+    const ac = new AbortController();
+    const started = performance.now();
+    setLoading(true);
+    setError('');
+    setElapsedMs(0);
     reset();
-    setVisitedTabs(new Set(['variants']));
+    setMountedTabs(new Set(['variants']));
+    setPendingTab(null);
     setTab('variants');
-    reviewApi.getResult(orderId)
+
+    const tick = window.setInterval(() => {
+      setElapsedMs(Math.round(performance.now() - started));
+    }, 100);
+
+    const url = reviewResultUrl(orderId);
+    console.info(`[review] fetch start ${url}`);
+
+    reviewApi
+      .getResult(orderId, { signal: ac.signal })
       .then((data) => {
+        const ms = Math.round(performance.now() - started);
+        console.info(`[review] fetch ok ${url} (${ms}ms)`, {
+          variants: data?.variants?.length ?? 0,
+        });
         // API already slims sgNIPT; client pass is a no-op when `_sgnipt_slim` is set.
         const normalized = normalizeSgniptReviewData(data);
-        setReviewData(normalized);
-        if (isSgniptReviewData(normalized as Record<string, unknown>)) {
-          const ids = (normalized.variants ?? [])
-            .filter((v) => {
-              const s = String(v.clinvar_sig_primary || v.acmg_classification || '').toLowerCase();
-              return s.includes('pathogenic');
-            })
-            .map((v) => v.variant_id);
-          if (ids.length) selectAll(ids);
-        }
+        const autoSelect = isSgniptReviewData(normalized as Record<string, unknown>)
+          ? (normalized.variants ?? [])
+              .filter((v) => {
+                const s = String(v.clinvar_sig_primary || v.acmg_classification || '').toLowerCase();
+                return s.includes('pathogenic');
+              })
+              .map((v) => v.variant_id)
+          : [];
+        // Defer heavy table mount so Spinner can paint; single store commit avoids double render.
+        startTransition(() => {
+          setReviewDataAndSelection(normalized, autoSelect);
+        });
       })
-      .catch((err: unknown) => setError(err instanceof Error ? err.message : 'Failed to load review data'))
-      .finally(() => setLoading(false));
-  }, [orderId, reset, setReviewData, selectAll]);
+      .catch((err: unknown) => {
+        if (ac.signal.aborted) return;
+        const ms = Math.round(performance.now() - started);
+        console.warn(`[review] fetch failed ${url} (${ms}ms)`, err);
+        setError(err instanceof Error ? err.message : 'Failed to load review data');
+      })
+      .finally(() => {
+        window.clearInterval(tick);
+        if (!ac.signal.aborted) {
+          setElapsedMs(Math.round(performance.now() - started));
+          setLoading(false);
+        }
+      });
+
+    return () => {
+      ac.abort();
+      window.clearInterval(tick);
+    };
+  }, [orderId, reset, setReviewDataAndSelection]);
 
   useEffect(() => {
     catalogApi.getPanels()
@@ -484,8 +581,44 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     };
   }, [tab, orderId, loading, patchReviewData]);
 
-  if (loading) return <p className="py-12 text-center text-muted">Loading review data…</p>;
-  if (error)   return <p className="py-12 text-center text-danger">{error}</p>;
+  if (loading) {
+    return (
+      <div>
+        <PageHeader
+          title="Variant Review"
+          description={`Order: ${orderId}`}
+          backHref="/orders"
+        />
+        <ReviewLoadingState orderId={orderId} elapsedMs={elapsedMs} />
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div>
+        <PageHeader
+          title="Variant Review"
+          description={`Order: ${orderId}`}
+          backHref="/orders"
+        />
+        <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 text-center">
+          <p className="text-sm text-danger">{error}</p>
+          <p className="text-xs text-muted font-mono break-all">
+            GET {reviewResultUrl(orderId)}
+          </p>
+          <Button
+            size="sm"
+            variant="secondary"
+            onPress={() => window.location.reload()}
+          >
+            Retry
+          </Button>
+        </div>
+      </div>
+    );
+  }
+
   if (!reviewData) return null;
 
   const serviceCode  = String(reviewData.service_code ?? reviewData._service_code ?? reviewData.type ?? '');
@@ -528,12 +661,12 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
         onSelectionChange={(key) => {
           const next = key as ReviewTabId;
           setTab(next);
-          setVisitedTabs((prev) => {
-            if (prev.has(next)) return prev;
-            const copy = new Set(prev);
-            copy.add(next);
-            return copy;
-          });
+          // First visit: paint Spinner before mounting heavy panels (Gene DB / Coverage / …).
+          if (!mountedTabs.has(next)) {
+            setPendingTab(next);
+          } else {
+            setPendingTab(null);
+          }
         }}
         className="mb-4 review-section-tabs"
       >
@@ -550,38 +683,49 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
       </Tabs>
 
       {/*
-        Keep visited panels mounted (hidden when inactive) so Coverage / Gene DB /
-        Report don't re-fetch on every tab switch — especially costly for sgNIPT.
+        Defer first mount of inactive→active tabs so Spinner paints immediately.
+        Once mounted, keep panels alive (hidden) to avoid refetch on switch.
       */}
       {visibleTabs.map((t) => {
-        if (!visitedTabs.has(t.id) && t.id !== tab) return null;
         const active = tab === t.id;
+        const mounted = mountedTabs.has(t.id);
+        const waiting = active && pendingTab === t.id && !mounted;
+        if (!mounted && !waiting) return null;
         return (
           <div
             key={t.id}
             className={active ? 'min-h-[400px] pt-4' : 'hidden'}
             aria-hidden={!active}
           >
-            {t.id === 'variants' && (
-              isSgnipt
-                ? <SgniptVariantTable orderId={orderId} />
-                : <VariantTable orderId={orderId} />
+            {waiting ? (
+              <TabPanelSpinner label={t.label} />
+            ) : (
+              <>
+                {t.id === 'variants' && (
+                  isSgnipt
+                    ? <SgniptVariantTable orderId={orderId} />
+                    : <VariantTable orderId={orderId} />
+                )}
+                {t.id === 'darkgenes' && (
+                  <DarkGenesPanel
+                    orderId={orderId}
+                    onJumpCoverage={() => {
+                      setTab('coverage');
+                      if (!mountedTabs.has('coverage')) setPendingTab('coverage');
+                    }}
+                  />
+                )}
+                {t.id === 'pgx' && (
+                  <PgxReview
+                    orderId={orderId}
+                    onOpenApoeIgv={(rel) => setApoeIgvPath(rel)}
+                  />
+                )}
+                {t.id === 'report' && <ReportBuilder orderId={orderId} />}
+                {t.id === 'genedb' && <GeneDatabase orderId={orderId} />}
+                {t.id === 'coverage' && <CoverageViewer orderId={orderId} />}
+              </>
             )}
-            {t.id === 'darkgenes' && (
-              <DarkGenesPanel
-                orderId={orderId}
-                onJumpCoverage={() => setTab('coverage')}
-              />
-            )}
-            {t.id === 'pgx' && (
-              <PgxReview
-                orderId={orderId}
-                onOpenApoeIgv={(rel) => setApoeIgvPath(rel)}
-              />
-            )}
-            {t.id === 'report' && <ReportBuilder orderId={orderId} />}
-            {t.id === 'genedb' && <GeneDatabase orderId={orderId} />}
-            {t.id === 'coverage' && <CoverageViewer orderId={orderId} />}
           </div>
         );
       })}
