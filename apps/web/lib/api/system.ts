@@ -6,9 +6,59 @@ export type SystemHealth = {
   daemon?: { status?: string };
 };
 
+/** gx-daemon GET /queue/summary — Admin Dashboard schema */
+export type QueueSummaryTotals = {
+  queued: number;
+  running: number;
+  completed_today: number;
+  failed_today: number;
+};
+
+export type QueueSummaryServiceRow = {
+  service_code: string;
+  display_name: string;
+  slot_group: string;
+  max_parallel: number;
+  running: number;
+  queued: number;
+  available: number;
+  completed_today: number;
+  failed_today: number;
+};
+
+export type QueueSummarySlotGroup = {
+  group: string;
+  max_parallel: number;
+  running: number;
+  queued: number;
+  available: number;
+  services: string[];
+};
+
+export type QueueSummary = {
+  today?: string;
+  totals?: QueueSummaryTotals;
+  services?: QueueSummaryServiceRow[];
+  slot_groups?: QueueSummarySlotGroup[];
+  running_jobs?: {
+    order_id: string;
+    service_code?: string;
+    sample_name?: string;
+    status?: string;
+    progress?: number;
+    message?: string;
+    started_at?: string;
+  }[];
+  // Legacy (still returned by gx-daemon)
+  total_queued?: number;
+  total_running?: number;
+  total_completed?: number;
+  total_failed?: number;
+};
+
 export const systemApi = {
   health:    () => api.get<SystemHealth>('/system/health'),
-  queue:     () => api.get<unknown>('/system/queue'),
+  queue:     () => api.get<QueueSummary>('/system/queue'),
   dashboardBucket: (params: {
     bucket: string;
     sort?: string;
