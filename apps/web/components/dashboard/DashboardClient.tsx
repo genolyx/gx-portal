@@ -1,13 +1,21 @@
 'use client';
 
-import { useCallback, useEffect, useState } from 'react';
-import { Card, Chip, EmptyState, Link, Spinner, Table } from '@heroui/react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import { Card, Chip, EmptyState, Link, Spinner, Switch, Table } from '@heroui/react';
+import { isPortalServiceCode, type UserProfile } from '@gx-portal/types';
+import { authApi } from '../../lib/api/auth';
+import { ordersApi } from '../../lib/api/orders';
 import {
   systemApi,
   type QueueSummary,
   type QueueSummaryServiceRow,
+  type QueueSummarySlotGroup,
 } from '../../lib/api/system';
 import { formatPortalDateTime } from '../../lib/datetime';
+import {
+  readIncludeExternalPreference,
+  writeIncludeExternalPreference,
+} from '../../lib/include-external';
 import { cn } from '../../lib/utils';
 import { PageHeader } from '../ui/PageHeader';
 import { OrderStatusBadge } from '../ui/OrderStatusBadge';
@@ -17,6 +25,7 @@ type DashboardBucket = 'queued' | 'running' | 'completed' | 'failed';
 interface BucketOrder {
   order_id: string;
   status: string;
+  service_code?: string;
   order_updated?: string;
   message?: string;
 }
@@ -63,8 +72,43 @@ function loadPct(running: number, max: number): number {
   return Math.min(100, Math.round((running / max) * 100));
 }
 
+/** Hide non-portal services (e.g. nipt) and recompute totals from remaining rows. */
+function filterQueueSummary(q: QueueSummary): QueueSummary {
+  const services = (q.services ?? []).filter((s) => isPortalServiceCode(s.service_code));
+  const totals = {
+    queued: services.reduce((n, s) => n + (s.queued ?? 0), 0),
+    running: services.reduce((n, s) => n + (s.running ?? 0), 0),
+    completed_today: services.reduce((n, s) => n + (s.completed_today ?? 0), 0),
+    failed_today: services.reduce((n, s) => n + (s.failed_today ?? 0), 0),
+  };
+  const slot_groups = (q.slot_groups ?? [])
+    .map((g): QueueSummarySlotGroup => ({
+      ...g,
+      services: (g.services ?? []).filter((code) => isPortalServiceCode(code)),
+    }))
+    .filter((g) => {
+      // External NIPT slot pool — hide when external services are off
+      if (g.group === 'nipt') return false;
+      return (g.services?.length ?? 0) > 0 || g.group === 'sgnipt' || g.group === 'exome';
+    });
+  const running_jobs = (q.running_jobs ?? []).filter((j) =>
+    isPortalServiceCode(j.service_code),
+  );
+  return {
+    ...q,
+    services,
+    slot_groups,
+    running_jobs,
+    totals,
+    total_queued: totals.queued,
+    total_running: totals.running,
+  };
+}
+
 export function DashboardClient() {
-  const [queue, setQueue] = useState<QueueSummary | null>(null);
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const [includeExternal, setIncludeExternal] = useState(readIncludeExternalPreference);
+  const [queueRaw, setQueueRaw] = useState<QueueSummary | null>(null);
   const [queueLoaded, setQueueLoaded] = useState(false);
   const [activeBucket, setActiveBucket] = useState<DashboardBucket | null>(null);
   const [bucketOrders, setBucketOrders] = useState<BucketOrder[]>([]);
@@ -72,11 +116,23 @@ export function DashboardClient() {
   const [bucketLoading, setBucketLoading] = useState(false);
   const [bucketError, setBucketError] = useState<string | null>(null);
 
+  const isAdmin = user?.role === 'admin';
+  const showExternal = isAdmin && includeExternal;
+
+  useEffect(() => {
+    authApi.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
+  const queue = useMemo(() => {
+    if (!queueRaw) return null;
+    return showExternal ? queueRaw : filterQueueSummary(queueRaw);
+  }, [queueRaw, showExternal]);
+
   const loadQueue = useCallback(() => {
     systemApi
       .queue()
-      .then((q) => setQueue(q))
-      .catch(() => setQueue(null))
+      .then((q) => setQueueRaw(q))
+      .catch(() => setQueueRaw(null))
       .finally(() => setQueueLoaded(true));
   }, []);
 
@@ -86,7 +142,7 @@ export function DashboardClient() {
     return () => clearInterval(id);
   }, [loadQueue]);
 
-  const loadBucket = useCallback(async (bucket: DashboardBucket) => {
+  const loadBucket = useCallback(async (bucket: DashboardBucket, external: boolean) => {
     setActiveBucket(bucket);
     setBucketLoading(true);
     setBucketError(null);
@@ -96,8 +152,23 @@ export function DashboardClient() {
         sort: 'order_updated',
         order: 'desc',
       });
-      setBucketOrders(data.orders ?? []);
-      setBucketTotal(data.total ?? data.orders?.length ?? 0);
+      let orders: BucketOrder[] = data.orders ?? [];
+      if (!external) {
+        const withCode = orders.filter((o) => o.service_code != null && o.service_code !== '');
+        if (withCode.length === orders.length && orders.length > 0) {
+          orders = orders.filter((o) => isPortalServiceCode(o.service_code));
+        } else {
+          // Bucket payload may omit service_code — intersect with portal-filtered order list
+          const list = await ordersApi.list();
+          const allowed = new Set((list.orders ?? []).map((o) => o.order_id));
+          orders = orders.filter((o) => {
+            if (o.service_code) return isPortalServiceCode(o.service_code);
+            return allowed.has(o.order_id);
+          });
+        }
+      }
+      setBucketOrders(orders);
+      setBucketTotal(orders.length);
     } catch (e) {
       setBucketOrders([]);
       setBucketTotal(0);
@@ -106,6 +177,17 @@ export function DashboardClient() {
       setBucketLoading(false);
     }
   }, []);
+
+  // Re-filter open bucket when external toggle changes
+  useEffect(() => {
+    if (activeBucket) void loadBucket(activeBucket, showExternal);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only re-run on toggle / role resolve
+  }, [showExternal]);
+
+  const handleIncludeExternalChange = (value: boolean) => {
+    setIncludeExternal(value);
+    writeIncludeExternalPreference(value);
+  };
 
   const services: QueueSummaryServiceRow[] = queue?.services ?? [];
   const slotGroups = queue?.slot_groups ?? [];
@@ -119,6 +201,30 @@ export function DashboardClient() {
           queue?.today
             ? `Queue load and today’s outcomes (KST ${queue.today}).`
             : 'Real-time analysis queue and system status.'
+        }
+        actions={
+          isAdmin ? (
+            <div className="flex flex-col items-end gap-1.5">
+              <span className="text-[11px] font-semibold text-muted uppercase tracking-wide">
+                External services
+              </span>
+              <Switch
+                isSelected={includeExternal}
+                onChange={handleIncludeExternalChange}
+                size="sm"
+                className="!flex-row !items-center !gap-2"
+              >
+                <Switch.Content className="!flex-row !items-center !gap-2">
+                  <span className="text-xs text-muted tabular-nums w-7 text-right">
+                    {includeExternal ? 'ON' : 'OFF'}
+                  </span>
+                  <Switch.Control>
+                    <Switch.Thumb />
+                  </Switch.Control>
+                </Switch.Content>
+              </Switch>
+            </div>
+          ) : undefined
         }
       />
 
@@ -137,11 +243,11 @@ export function DashboardClient() {
               role="button"
               tabIndex={0}
               aria-pressed={active}
-              onClick={() => void loadBucket(key)}
+              onClick={() => void loadBucket(key, showExternal)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter' || e.key === ' ') {
                   e.preventDefault();
-                  void loadBucket(key);
+                  void loadBucket(key, showExternal);
                 }
               }}
             >

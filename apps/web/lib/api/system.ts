@@ -72,7 +72,13 @@ export const systemApi = {
     return api.get<{
       bucket: string;
       total: number;
-      orders: { order_id: string; status: string; order_updated?: string; message?: string }[];
+      orders: {
+        order_id: string;
+        status: string;
+        service_code?: string;
+        order_updated?: string;
+        message?: string;
+      }[];
     }>(`/system/dashboard/bucket?${qs.toString()}`);
   },
   services:  () => api.get<unknown>('/system/services'),

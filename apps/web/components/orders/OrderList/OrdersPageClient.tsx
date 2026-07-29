@@ -30,8 +30,10 @@ import {
   portalDayStart,
   portalTodayIso,
 } from '../../../lib/datetime';
-
-const INCLUDE_EXTERNAL_KEY = 'gx-portal.orders.includeExternal';
+import {
+  readIncludeExternalPreference,
+  writeIncludeExternalPreference,
+} from '../../../lib/include-external';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -643,14 +645,7 @@ export function OrdersPageClient() {
   const [showCreate, setShowCreate] = useState(false);
   const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
-  const [includeExternal, setIncludeExternal] = useState(() => {
-    if (typeof window === 'undefined') return false;
-    try {
-      return localStorage.getItem(INCLUDE_EXTERNAL_KEY) === '1';
-    } catch {
-      return false;
-    }
-  });
+  const [includeExternal, setIncludeExternal] = useState(readIncludeExternalPreference);
 
   // Two-stage filter: pending (in the form) → active (applied to data)
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTER);
@@ -686,11 +681,7 @@ export function OrdersPageClient() {
 
   const handleIncludeExternalChange = (value: boolean) => {
     setIncludeExternal(value);
-    try {
-      localStorage.setItem(INCLUDE_EXTERNAL_KEY, value ? '1' : '0');
-    } catch {
-      /* ignore */
-    }
+    writeIncludeExternalPreference(value);
     if (!value) {
       const clearExternalFilter = (prev: FilterState): FilterState => {
         if (!prev.service) return prev;
