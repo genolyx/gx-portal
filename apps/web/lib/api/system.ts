@@ -35,7 +35,62 @@ export type QueueSummarySlotGroup = {
   services: string[];
 };
 
+/** Cloud Portal / nipt-daemon compatible detail rows */
+export type QueueWaitingItem = {
+  order_id: string;
+  service_code?: string;
+  queued_at?: string;
+};
+
+export type QueueRunningItem = {
+  order_id: string;
+  service_code?: string;
+  status?: string;
+  started_at?: string;
+};
+
+export type QueueCompletedTodayItem = {
+  order_id: string;
+  service_code?: string;
+  completed_at?: string;
+  duration_seconds?: number | null;
+};
+
+export type QueueFailedTodayItem = {
+  order_id: string;
+  service_code?: string;
+  failed_at?: string;
+  message?: string;
+};
+
+export type QueueSummaryDetails = {
+  queue_waiting_list?: QueueWaitingItem[];
+  running_list?: QueueRunningItem[];
+  completed_today_list?: QueueCompletedTodayItem[];
+  failed_today_list?: QueueFailedTodayItem[];
+  queue_items?: string[];
+  running_items?: Record<string, { start_time?: string }>;
+  completed_today?: Record<string, { start_time?: string; end_time?: string }>;
+  failed_today?: Record<string, { start_time?: string; end_time?: string; message?: string }>;
+};
+
 export type QueueSummary = {
+  // Cloud Portal / nipt-daemon fields
+  /** UTC calendar day — submit/처리된 주문 (중복 제거) */
+  requested_samples_today?: number;
+  /** "n/max" string from daemon HTTP response */
+  running?: string | number;
+  max_parallel?: number;
+  queue_waiting?: number;
+  completed_today?: number;
+  failed_today?: number;
+  /** In-memory: queue + running + completed + failed */
+  requested_samples_total?: number;
+  completed_total?: number;
+  failed_total?: number;
+  details?: QueueSummaryDetails;
+
+  // gx-portal multi-service fields
   today?: string;
   totals?: QueueSummaryTotals;
   services?: QueueSummaryServiceRow[];
@@ -49,11 +104,15 @@ export type QueueSummary = {
     message?: string;
     started_at?: string;
   }[];
-  // Legacy (still returned by gx-daemon)
+  // Legacy
   total_queued?: number;
   total_running?: number;
   total_completed?: number;
   total_failed?: number;
+  stats_by_service?: Record<
+    string,
+    { queued?: number; running?: number; completed?: number; failed?: number }
+  >;
 };
 
 export const systemApi = {
@@ -93,7 +152,6 @@ export const systemApi = {
   setAiConfig: (body: unknown) => api.put<unknown>('/system/ai-config', body),
   getOllamaModels: () => api.get<{ models?: { name: string }[] | string[] } | string[]>('/system/ai/models'),
 
-  /** Stream Ollama model pull progress (NDJSON). */
   pullOllamaModel: async (
     model: string,
     onLine?: (evt: Record<string, unknown>) => void,
