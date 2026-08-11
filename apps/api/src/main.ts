@@ -24,9 +24,13 @@ async function bootstrap() {
 
   const config = new DocumentBuilder()
     .setTitle('Gx-Portal API')
-    .setDescription('BFF for gx-daemon — handles auth and proxies analysis requests')
+    .setDescription(
+      'BFF for gx-daemon — handles auth and proxies analysis requests. ' +
+        'External Create Order docs: /docs/external-create-order.html (web) or see ExternalOrders tag.',
+    )
     .setVersion('1.0')
     .addBearerAuth()
+    .addApiKey({ type: 'apiKey', name: 'X-API-Key', in: 'header' }, 'api-key')
     .build();
   const document = SwaggerModule.createDocument(app, config);
   // Behind nginx /api/ strip this is served at http://host:8090/api/docs

@@ -1,0 +1,337 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Gx-Portal — External Create Order API</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --card: #fff;
+      --text: #1a1d23;
+      --muted: #5c6570;
+      --border: #d8dde3;
+      --accent: #0b6bcb;
+      --code-bg: #f0f2f5;
+      --req: #b42318;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Segoe UI", system-ui, -apple-system, sans-serif;
+      color: var(--text);
+      background: var(--bg);
+      line-height: 1.55;
+    }
+    header {
+      background: var(--card);
+      border-bottom: 1px solid var(--border);
+      padding: 1.5rem 2rem;
+    }
+    header h1 { margin: 0 0 0.35rem; font-size: 1.5rem; }
+    header p { margin: 0; color: var(--muted); }
+    main { max-width: 960px; margin: 0 auto; padding: 1.5rem 1.25rem 3rem; }
+    section {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 1.25rem 1.4rem;
+      margin-bottom: 1rem;
+    }
+    h2 { margin: 0 0 0.75rem; font-size: 1.15rem; }
+    h3 { margin: 1.25rem 0 0.5rem; font-size: 1rem; }
+    table { width: 100%; border-collapse: collapse; font-size: 0.9rem; }
+    th, td { border-top: 1px solid var(--border); padding: 0.45rem 0.5rem; text-align: left; vertical-align: top; }
+    th { color: var(--muted); font-weight: 600; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.03em; }
+    code, pre {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+      font-size: 0.85rem;
+    }
+    code { background: var(--code-bg); padding: 0.1rem 0.35rem; border-radius: 4px; }
+    pre {
+      background: var(--code-bg);
+      padding: 0.9rem 1rem;
+      border-radius: 8px;
+      overflow-x: auto;
+      border: 1px solid var(--border);
+    }
+    .req { color: var(--req); font-weight: 600; }
+    .opt { color: var(--muted); }
+    a { color: var(--accent); }
+    ul { padding-left: 1.2rem; }
+    .nav { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 0.75rem; }
+    .nav a { font-size: 0.9rem; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>External Create Order API</h1>
+    <p>Create Gx-Portal analysis orders from an external portal using an API key. Fastq files can be supplied as HTTP(S) URLs (downloaded into shared FASTQ directories) or as absolute paths already on disk.</p>
+    <div class="nav">
+      <a href="#auth">Auth</a>
+      <a href="#endpoints">Endpoints</a>
+      <a href="#common">Common fields</a>
+      <a href="#carrier">Carrier Screening</a>
+      <a href="#wes">Whole Exome</a>
+      <a href="#health">Health Screening</a>
+      <a href="#sgnipt">Single-gene NIPT</a>
+      <a href="#fastq">FASTQ download</a>
+      <a href="#examples">Examples</a>
+      <a href="#errors">Errors</a>
+    </div>
+  </header>
+
+  <main>
+    <section id="auth">
+      <h2>Authentication</h2>
+      <p>Send the API key on every request:</p>
+      <pre>X-API-Key: &lt;EXTERNAL_API_KEY&gt;</pre>
+      <p>Alternatively: <code>Authorization: ApiKey &lt;EXTERNAL_API_KEY&gt;</code></p>
+      <p>Keys and client mapping are configured in the API <code>.env</code>:</p>
+      <ul>
+        <li><code>EXTERNAL_API_KEY</code> — shared secret</li>
+        <li><code>EXTERNAL_API_CLIENT_ID</code> — portal <code>clients.id</code> that owns created orders (must have <code>order_prefix</code>)</li>
+        <li><code>FASTQ_DIR_CARRIER</code> / <code>FASTQ_DIR_SGNIPT</code> — download roots (must be readable by gx-daemon)</li>
+      </ul>
+      <p>Missing/invalid key → <code>401</code>.</p>
+    </section>
+
+    <section id="endpoints">
+      <h2>Base URLs</h2>
+      <ul>
+        <li>Production (nginx): <code>http://&lt;host&gt;:8090/api/external</code></li>
+        <li>Local API: <code>http://localhost:4000/external</code></li>
+      </ul>
+      <h2>Endpoints</h2>
+      <table>
+        <thead>
+          <tr><th>Method</th><th>Path</th><th>Description</th></tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><code>POST</code></td>
+            <td><code>/orders/:serviceCode</code></td>
+            <td>Create order. <code>serviceCode</code>: <code>carrier_screening</code> | <code>whole_exome</code> | <code>health_screening</code> | <code>sgnipt</code></td>
+          </tr>
+          <tr>
+            <td><code>GET</code></td>
+            <td><code>/orders/:orderId</code></td>
+            <td>Get order (scoped to the API key’s client)</td>
+          </tr>
+          <tr>
+            <td><code>POST</code></td>
+            <td><code>/orders/:orderId/start</code></td>
+            <td>Start pipeline for a saved order</td>
+          </tr>
+        </tbody>
+      </table>
+      <p>Order IDs are allocated by Gx-Portal as <code>{CS|WE|HS|SN}{clientPrefix}{YYMM}{seq4}</code> (e.g. <code>CSGX26080001</code>). Do not send your own <code>order_id</code>.</p>
+      <p>Create returns a <strong>draft</strong> (<code>SAVED</code>) unless <code>"start": true</code> is set in the body.</p>
+    </section>
+
+    <section id="common">
+      <h2>Common request body</h2>
+      <pre>{
+  "description": "optional external reference / note",
+  "work_dir": "2608",
+  "fastq_r1_url": "https://example.com/sample_R1.fastq.gz",
+  "fastq_r2_url": "https://example.com/sample_R2.fastq.gz",
+  "fastq_r1_path": "/already/on/disk/R1.fastq.gz",
+  "fastq_r2_path": "/already/on/disk/R2.fastq.gz",
+  "start": false,
+  "params": { }
+}</pre>
+      <table>
+        <thead><tr><th>Field</th><th>Req</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>description</code></td><td class="opt">optional</td><td>Stored in portal registry (not sent to daemon)</td></tr>
+          <tr><td><code>work_dir</code></td><td class="opt">optional</td><td>YYMM folder key; auto from order ID if empty</td></tr>
+          <tr><td><code>fastq_r1_url</code> / <code>fastq_r2_url</code></td><td class="opt">optional</td><td>Downloaded into shared FASTQ dir; <strong>URL wins over path</strong></td></tr>
+          <tr><td><code>fastq_r1_path</code> / <code>fastq_r2_path</code></td><td class="opt">optional</td><td>Absolute paths already on shared storage</td></tr>
+          <tr><td><code>start</code></td><td class="opt">optional</td><td>Default <code>false</code>. If <code>true</code>, start pipeline after save</td></tr>
+          <tr><td><code>params</code></td><td class="req">required shape</td><td>Service-specific (see below)</td></tr>
+        </tbody>
+      </table>
+      <p>BAM-only flows may omit FASTQ and pass <code>params.input_bam</code> / <code>params.input_bam_csv</code> instead.</p>
+    </section>
+
+    <section id="carrier">
+      <h2>Service: <code>carrier_screening</code></h2>
+      <p><span class="req">Required:</span> <code>params.wes_panel_id</code> (Primary interpretation panel id from catalog).</p>
+      <h3>params (top-level)</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Req</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>wes_panel_id</code></td><td class="req">required</td><td>e.g. <code>Carrier_302</code></td></tr>
+          <tr><td><code>input_bam</code></td><td class="opt">optional</td><td>Skip-alignment BAM path</td></tr>
+          <tr><td><code>input_bam_csv</code></td><td class="opt">optional</td><td>samplesheet CSV</td></tr>
+          <tr><td><code>backbone_bed</code> / <code>disease_bed</code></td><td class="opt">optional</td><td></td></tr>
+          <tr><td><code>max_af</code></td><td class="opt">optional</td><td>number</td></tr>
+          <tr><td><code>hpo_terms</code> / <code>gene_filter</code></td><td class="opt">optional</td><td></td></tr>
+          <tr><td><code>panel_filter_after_analysis</code></td><td class="opt">optional</td><td>default <code>true</code></td></tr>
+          <tr><td><code>interpretation_genes_extra</code></td><td class="opt">optional</td><td>comma-separated genes</td></tr>
+          <tr><td><code>carrier</code></td><td class="opt">optional</td><td>clinical nested object (defaults applied)</td></tr>
+        </tbody>
+      </table>
+      <h3>params.carrier</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Default / notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>package_code</code></td><td>Forced to <code>CarrierScreening</code></td></tr>
+          <tr><td><code>patient_name</code>, <code>patient_birth</code>, <code>patient_gender</code></td><td>gender default <code>Female</code></td></tr>
+          <tr><td><code>hospital_name</code>, <code>doctor</code></td><td></td></tr>
+          <tr><td><code>affected</code></td><td>default <code>No</code></td></tr>
+          <tr><td><code>sample_collection_date</code></td><td>ISO date</td></tr>
+          <tr><td><code>report_language</code></td><td>default <code>EN</code></td></tr>
+          <tr><td><code>report_type</code></td><td>default <code>Portal</code> (Printout / Email / Portal)</td></tr>
+          <tr><td><code>sample_specimen_type</code></td><td>default <code>Blood</code></td></tr>
+          <tr><td><code>report_mode</code></td><td><code>single</code> | <code>couples</code></td></tr>
+          <tr><td><code>wes_panel_id</code></td><td>mirrored from top-level</td></tr>
+          <tr><td><code>capture_panel_id</code></td><td>default <code>twist-exome2</code></td></tr>
+          <tr><td><code>include_pgx</code></td><td>default <code>true</code></td></tr>
+          <tr><td><code>reuse_prior_pipeline_outputs</code></td><td>default <code>false</code></td></tr>
+        </tbody>
+      </table>
+    </section>
+
+    <section id="wes">
+      <h2>Service: <code>whole_exome</code></h2>
+      <p>Same field schema as Carrier Screening. Differences:</p>
+      <ul>
+        <li><code>params.carrier.package_code</code> forced to <code>WholeExome</code></li>
+        <li><span class="req">Required:</span> <code>params.wes_panel_id</code></li>
+      </ul>
+    </section>
+
+    <section id="health">
+      <h2>Service: <code>health_screening</code></h2>
+      <p>Same field schema as Carrier Screening. Differences:</p>
+      <ul>
+        <li><code>params.carrier.package_code</code> forced to <code>HealthScreening</code></li>
+        <li>Additional optional top-level: <code>params.include_apoe_pgx</code> (boolean)</li>
+        <li><span class="req">Required:</span> <code>params.wes_panel_id</code></li>
+      </ul>
+    </section>
+
+    <section id="sgnipt">
+      <h2>Service: <code>sgnipt</code> (Single-gene NIPT)</h2>
+      <p>Clinical fields live under <code>params.nipt</code>.</p>
+      <h3>params</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Req</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>nipt</code></td><td class="req">required</td><td>clinical object</td></tr>
+          <tr><td><code>input_bam_csv</code></td><td class="opt">optional</td><td>BAM mode samplesheet under work root</td></tr>
+        </tbody>
+      </table>
+      <h3>params.nipt — required</h3>
+      <table>
+        <thead><tr><th>Field</th><th>Notes</th></tr></thead>
+        <tbody>
+          <tr><td><code>patient_name</code></td><td></td></tr>
+          <tr><td><code>patient_birth</code></td><td>date</td></tr>
+          <tr><td><code>patient_gender</code></td><td>Female / Male / Other</td></tr>
+          <tr><td><code>gestational_age_weeks</code></td><td>number</td></tr>
+          <tr><td><code>gestational_age_days</code></td><td>number</td></tr>
+          <tr><td><code>pregnancy_type</code></td><td>Singleton / Twin / Multiple</td></tr>
+          <tr><td><code>estimated_delivery_date</code></td><td>EDD</td></tr>
+          <tr><td><code>hospital_name</code></td><td></td></tr>
+          <tr><td><code>doctor</code></td><td></td></tr>
+          <tr><td><code>sample_collection_date</code></td><td></td></tr>
+          <tr><td><code>package_code</code></td><td>Basic / Standard / Ultimate_Plus / Other</td></tr>
+          <tr><td><code>report_language</code></td><td>EN / KO / CN / ID / Other</td></tr>
+          <tr><td><code>report_type</code></td><td>Printout / Email / Portal</td></tr>
+        </tbody>
+      </table>
+      <h3>params.nipt — optional</h3>
+      <p><code>previous_order_id</code>, <code>height_cm</code>, <code>weight_kg</code>, <code>medical_record_id</code>, <code>sample_id</code>, <code>indication_for_testing</code>, <code>receipt_date</code>, <code>sample_specimen_type</code> (default Blood), <code>measurement_method</code> (default LMP), <code>sample_barcode</code>, <code>category</code>, <code>nipt_kit_id</code>, <code>sequencing_batch_id</code>, <code>control_sample</code>, <code>trf_consent</code>, <code>show_fetal_gender</code>, <code>resample</code>.</p>
+      <p>sgNIPT does <strong>not</strong> use <code>wes_panel_id</code> / <code>carrier</code>.</p>
+    </section>
+
+    <section id="fastq">
+      <h2>FASTQ URL download</h2>
+      <ol>
+        <li>Portal allocates <code>order_id</code>.</li>
+        <li>Downloads each URL into <code>{FASTQ_DIR_*}/{orderId}/&lt;basename&gt;</code>.</li>
+        <li>Sets <code>fastq_r1_path</code> / <code>fastq_r2_path</code> on the daemon save payload.</li>
+      </ol>
+      <ul>
+        <li>Exome family → <code>FASTQ_DIR_CARRIER</code></li>
+        <li>sgNIPT → <code>FASTQ_DIR_SGNIPT</code></li>
+      </ul>
+      <p>These directories must be the same roots gx-daemon uses for FASTQ browse. Large downloads may take several minutes; nginx timeout for <code>/api/external/</code> is 30 minutes.</p>
+    </section>
+
+    <section id="examples">
+      <h2>Examples</h2>
+      <h3>Carrier Screening (with FASTQ URLs)</h3>
+      <pre>curl -X POST 'http://localhost:8090/api/external/orders/carrier_screening' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: YOUR_KEY' \
+  -d '{
+    "description": "ext-ref-001",
+    "fastq_r1_url": "https://example.com/sample_R1.fastq.gz",
+    "fastq_r2_url": "https://example.com/sample_R2.fastq.gz",
+    "params": {
+      "wes_panel_id": "Carrier_302",
+      "carrier": {
+        "patient_name": "Jane Doe",
+        "patient_birth": "1990-01-15",
+        "patient_gender": "Female",
+        "hospital_name": "Genolyx Hospital",
+        "doctor": "Dr. Kim",
+        "sample_collection_date": "2026-08-01",
+        "report_language": "EN",
+        "report_type": "Portal"
+      }
+    }
+  }'</pre>
+
+      <h3>Single-gene NIPT</h3>
+      <pre>curl -X POST 'http://localhost:8090/api/external/orders/sgnipt' \
+  -H 'Content-Type: application/json' \
+  -H 'X-API-Key: YOUR_KEY' \
+  -d '{
+    "fastq_r1_url": "https://example.com/sg_R1.fastq.gz",
+    "fastq_r2_url": "https://example.com/sg_R2.fastq.gz",
+    "params": {
+      "nipt": {
+        "patient_name": "Jane Doe",
+        "patient_birth": "1990-01-15",
+        "patient_gender": "Female",
+        "gestational_age_weeks": 12,
+        "gestational_age_days": 3,
+        "pregnancy_type": "Singleton",
+        "estimated_delivery_date": "2026-12-01",
+        "hospital_name": "Genolyx Hospital",
+        "doctor": "Dr. Kim",
+        "sample_collection_date": "2026-08-01",
+        "package_code": "Standard",
+        "report_language": "EN",
+        "report_type": "Portal"
+      }
+    }
+  }'</pre>
+
+      <h3>Start after create</h3>
+      <pre># either set "start": true on create, or:
+curl -X POST 'http://localhost:8090/api/external/orders/CSGX26080001/start' \
+  -H 'X-API-Key: YOUR_KEY'</pre>
+    </section>
+
+    <section id="errors">
+      <h2>Error codes</h2>
+      <table>
+        <thead><tr><th>HTTP</th><th>When</th></tr></thead>
+        <tbody>
+          <tr><td><code>401</code></td><td>Missing/invalid API key, or key/client not configured</td></tr>
+          <tr><td><code>400</code></td><td>Validation failed, unsupported service, or FASTQ download error</td></tr>
+          <tr><td><code>403</code></td><td>Client not allowed to access the order</td></tr>
+          <tr><td><code>404</code></td><td>Order not found</td></tr>
+        </tbody>
+      </table>
+      <p>Interactive Nest Swagger (Bearer/JWT UI routes): <code>/api/docs</code>. This page documents the external API key surface.</p>
+    </section>
+  </main>
+</body>
+</html>

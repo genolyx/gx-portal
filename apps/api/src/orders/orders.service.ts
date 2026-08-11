@@ -75,9 +75,14 @@ export class OrdersService {
     serviceCode: string,
     body: OrderCreateBody,
     user?: RequestUser,
+    opts?: { useProvidedOrderId?: boolean },
   ): Promise<Order> {
     const clientId = this.registry.resolveClientIdForCreate(user, body.client_id);
-    const orderId = this.registry.allocateOrderId(serviceCode, clientId);
+    const providedId = body.order_id?.trim();
+    const orderId =
+      opts?.useProvidedOrderId && providedId
+        ? providedId
+        : this.registry.allocateOrderId(serviceCode, clientId);
     const workDir =
       body.work_dir?.trim() ||
       this.registry.workDirFromOrderId(orderId) ||
@@ -87,13 +92,17 @@ export class OrdersService {
     const daemonBody = { ...body, order_id: orderId, work_dir: workDir };
     delete (daemonBody as Record<string, unknown>).client_id;
     delete (daemonBody as Record<string, unknown>).description;
+    // External-only fields must never reach gx-daemon
+    delete (daemonBody as Record<string, unknown>).start;
+    delete (daemonBody as Record<string, unknown>).fastq_r1_url;
+    delete (daemonBody as Record<string, unknown>).fastq_r2_url;
 
     const order = await this.daemon.post<Order>(`/order/${serviceCode}/save`, daemonBody);
 
     this.registry.registerOrder({
       orderId: order.order_id || orderId,
       clientId,
-      createdBy: user?.id,
+      createdBy: user?.id && user.id > 0 ? user.id : undefined,
       serviceCode,
       description,
       workDir: order.work_dir ?? workDir,

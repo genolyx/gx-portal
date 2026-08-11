@@ -17,6 +17,8 @@ packages/types/dist/
 
 # Portal SQLite runtime DB (USERS_DB_PATH — users.db / portal.db + WAL)
 apps/api/data/
+# Host bind-mounts for external FASTQ downloads (docker-compose)
+/data/fastq/
 *.db
 *.db-shm
 *.db-wal

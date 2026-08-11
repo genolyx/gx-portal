@@ -48,9 +48,16 @@ services:
       # Share the same SQLite as local API (Client / Lab / User / portal_orders)
       - USERS_DB_PATH=/data/users.db
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8090,http://127.0.0.1:8090}
+      - EXTERNAL_API_KEY=${EXTERNAL_API_KEY:-}
+      - EXTERNAL_API_CLIENT_ID=${EXTERNAL_API_CLIENT_ID:-1}
+      - FASTQ_DIR_CARRIER=${FASTQ_DIR_CARRIER:-/data/fastq/carrier}
+      - FASTQ_DIR_SGNIPT=${FASTQ_DIR_SGNIPT:-/data/fastq/sgnipt}
     volumes:
       # Bind-mount host DB so :8090 and :3000 see the same org data
       - ./apps/api/data:/data
+      # Shared FASTQ dirs (must match gx-daemon browse roots)
+      - ${FASTQ_DIR_CARRIER_HOST:-./data/fastq/carrier}:${FASTQ_DIR_CARRIER:-/data/fastq/carrier}
+      - ${FASTQ_DIR_SGNIPT_HOST:-./data/fastq/sgnipt}:${FASTQ_DIR_SGNIPT:-/data/fastq/sgnipt}
     extra_hosts:
       - "host.docker.internal:host-gateway"
     networks:
