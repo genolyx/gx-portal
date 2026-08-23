@@ -52,6 +52,9 @@ services:
       - EXTERNAL_API_CLIENT_ID=${EXTERNAL_API_CLIENT_ID:-1}
       - FASTQ_DIR_CARRIER=${FASTQ_DIR_CARRIER:-/data/fastq/carrier}
       - FASTQ_DIR_SGNIPT=${FASTQ_DIR_SGNIPT:-/data/fastq/sgnipt}
+      # Host paths gx-daemon should see (same bind mount as *_HOST)
+      - FASTQ_DIR_CARRIER_DAEMON=${FASTQ_DIR_CARRIER_DAEMON:-}
+      - FASTQ_DIR_SGNIPT_DAEMON=${FASTQ_DIR_SGNIPT_DAEMON:-}
     volumes:
       # Bind-mount host DB so :8090 and :3000 see the same org data
       - ./apps/api/data:/data

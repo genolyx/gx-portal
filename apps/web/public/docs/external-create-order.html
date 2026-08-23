@@ -91,9 +91,10 @@
       <ul>
         <li><code>EXTERNAL_API_KEY</code> — shared secret</li>
         <li><code>EXTERNAL_API_CLIENT_ID</code> — portal <code>clients.id</code> that owns created orders (must have <code>order_prefix</code>)</li>
-        <li><code>FASTQ_DIR_CARRIER</code> / <code>FASTQ_DIR_SGNIPT</code> — download roots (must be readable by gx-daemon)</li>
+        <li><code>FASTQ_DIR_CARRIER</code> / <code>FASTQ_DIR_SGNIPT</code> — where the API writes downloads</li>
+        <li><code>FASTQ_DIR_CARRIER_DAEMON</code> / <code>FASTQ_DIR_SGNIPT_DAEMON</code> — optional; host paths stored on the order when API (Docker) and gx-daemon (host) see different absolute paths for the same bind mount</li>
       </ul>
-      <p>Missing/invalid key → <code>401</code>.</p>
+      <p>Missing/invalid key → <code>401</code>. Placeholder / empty <code>EXTERNAL_API_KEY</code> → <code>503</code>.</p>
     </section>
 
     <section id="endpoints">

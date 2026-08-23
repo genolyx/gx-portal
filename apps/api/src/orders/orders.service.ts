@@ -99,14 +99,28 @@ export class OrdersService {
 
     const order = await this.daemon.post<Order>(`/order/${serviceCode}/save`, daemonBody);
 
-    this.registry.registerOrder({
-      orderId: order.order_id || orderId,
-      clientId,
-      createdBy: user?.id && user.id > 0 ? user.id : undefined,
-      serviceCode,
-      description,
-      workDir: order.work_dir ?? workDir,
-    });
+    try {
+      this.registry.registerOrder({
+        orderId: order.order_id || orderId,
+        clientId,
+        createdBy: user?.id && user.id > 0 ? user.id : undefined,
+        serviceCode,
+        description,
+        workDir: order.work_dir ?? workDir,
+      });
+    } catch (err) {
+      // Daemon already persisted the order; surface the registry error without
+      // implying the save rolled back (callers must not delete FASTQ inputs).
+      const msg = err instanceof Error ? err.message : String(err);
+      throw new HttpException(
+        {
+          message: `Order saved on daemon but portal registry failed: ${msg}`,
+          order_id: order.order_id || orderId,
+          order,
+        },
+        502,
+      );
+    }
 
     return this.registry.enrichOrder(order);
   }

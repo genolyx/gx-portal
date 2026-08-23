@@ -366,14 +366,25 @@ export class OrderRegistryService implements OnApplicationBootstrap {
   }
 }
 
+/** Order ID period uses Asia/Seoul (portal display timezone), not server local TZ. */
+function yymmInSeoul(date: Date): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'Asia/Seoul',
+    year: 'numeric',
+    month: '2-digit',
+  }).formatToParts(date);
+  const year = parts.find((p) => p.type === 'year')?.value ?? '';
+  const month = parts.find((p) => p.type === 'month')?.value ?? '';
+  return `${year.slice(-2)}${month}`;
+}
+
 function currentYymm(): string {
-  const now = new Date();
-  return `${String(now.getFullYear()).slice(-2)}${String(now.getMonth() + 1).padStart(2, '0')}`;
+  return yymmInSeoul(new Date());
 }
 
 function yymmFromIso(iso?: string): string | undefined {
   if (!iso) return undefined;
   const d = new Date(iso);
   if (Number.isNaN(d.getTime())) return undefined;
-  return `${String(d.getFullYear()).slice(-2)}${String(d.getMonth() + 1).padStart(2, '0')}`;
+  return yymmInSeoul(d);
 }
