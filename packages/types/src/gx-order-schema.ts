@@ -15,13 +15,16 @@ export type GxServiceCode = (typeof GX_SERVICE_CODES)[GxDaemonService];
 export interface GxOrderSchemaField {
   fieldKey: string;
   fieldLabel: string;
-  fieldType: 'string' | 'number' | 'date' | 'enum' | 'boolean';
+  fieldType: 'string' | 'number' | 'date' | 'enum' | 'boolean' | 'array';
   isRequired: boolean;
   order: number;
-  defaultValue: unknown;
-  validation: Record<string, unknown> | null;
-  enumValues: string[];
-  enumLabels: string[];
+  /** Present only when a default applies. */
+  defaultValue?: unknown;
+  /** Present only when constraints exist (e.g. maxLength, min, max). */
+  validation?: Record<string, unknown>;
+  /** Present for enum / array fields. */
+  enumValues?: string[];
+  enumLabels?: string[];
 }
 
 export interface GxOrderSchema {
@@ -63,17 +66,26 @@ function field(
   isRequired = false,
   extra?: Partial<Pick<GxOrderSchemaField, 'defaultValue' | 'validation' | 'enumValues' | 'enumLabels'>>,
 ): GxOrderSchemaField {
-  return {
+  const out: GxOrderSchemaField = {
     fieldKey,
     fieldLabel,
     fieldType,
     isRequired,
     order,
-    defaultValue: extra?.defaultValue ?? null,
-    validation: extra?.validation ?? null,
-    enumValues: extra?.enumValues ?? [],
-    enumLabels: extra?.enumLabels ?? [],
   };
+  if (extra?.defaultValue !== undefined && extra.defaultValue !== null) {
+    out.defaultValue = extra.defaultValue;
+  }
+  if (extra?.validation && Object.keys(extra.validation).length > 0) {
+    out.validation = extra.validation;
+  }
+  if (extra?.enumValues && extra.enumValues.length > 0) {
+    out.enumValues = extra.enumValues;
+  }
+  if (extra?.enumLabels && extra.enumLabels.length > 0) {
+    out.enumLabels = extra.enumLabels;
+  }
+  return out;
 }
 
 function enums(pairs: Array<{ value: string; label: string }>) {
