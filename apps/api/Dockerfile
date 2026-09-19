@@ -37,8 +37,17 @@ COPY --from=deps /app/apps/api/package.json ./apps/api/package.json
 COPY --from=builder /app/packages/types/package.json ./packages/types/package.json
 COPY --from=builder /app/packages/types/dist ./packages/types/dist
 COPY --from=builder /app/apps/api/dist ./apps/api/dist
+COPY apps/api/docker-entrypoint.sh /docker-entrypoint.sh
 
-RUN mkdir -p /data && chown -R node:node /data /app
-USER node
+RUN mkdir -p /data \
+  && chown -R node:node /data /app \
+  && chmod +x /docker-entrypoint.sh \
+  && apt-get update \
+  && apt-get install -y --no-install-recommends passwd \
+  && rm -rf /var/lib/apt/lists/*
+
+# Entrypoint starts as root to fix bind-mount perms, then drops to node.
+USER root
 EXPOSE 4000
+ENTRYPOINT ["/docker-entrypoint.sh"]
 CMD ["node", "apps/api/dist/apps/api/src/main.js"]
