@@ -37,4 +37,6 @@ export const ordersApi = {
   getFiles: (id: string) => api.get<{ files: { name: string; size: number; mtime_ms: number; type: string }[] }>(`/orders/${enc(id)}/files`),
   getOutputFileUrl: (id: string, filename: string) => `/api/orders/${enc(id)}/output/${encodeURIComponent(filename)}`,
   getLog: (id: string) => api.getText(`/orders/${enc(id)}/pipeline-log`),
+  sendGxReport: (id: string) =>
+    api.post<{ order_id?: string; status?: string }>(`/v1/orders/${enc(id)}/send-report`, {}),
 };

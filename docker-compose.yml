@@ -50,6 +50,8 @@ services:
       - CORS_ORIGINS=${CORS_ORIGINS:-http://localhost:8090,http://127.0.0.1:8090}
       - EXTERNAL_API_KEY=${EXTERNAL_API_KEY:-}
       - EXTERNAL_API_CLIENT_ID=${EXTERNAL_API_CLIENT_ID:-1}
+      - GX_EXTERNAL_API_KEY=${GX_EXTERNAL_API_KEY:-}
+      - GX_CALLBACK_API_KEY=${GX_CALLBACK_API_KEY:-}
       - FASTQ_DIR_CARRIER=${FASTQ_DIR_CARRIER:-/data/fastq/carrier}
       - FASTQ_DIR_SGNIPT=${FASTQ_DIR_SGNIPT:-/data/fastq/sgnipt}
       # Host paths gx-daemon should see (same bind mount as *_HOST)

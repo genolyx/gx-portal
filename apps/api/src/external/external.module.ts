@@ -9,5 +9,6 @@ import { FastqDownloadService } from './fastq-download.service';
   imports: [OrdersModule],
   controllers: [ExternalOrdersController],
   providers: [ExternalOrdersService, FastqDownloadService, ApiKeyGuard],
+  exports: [FastqDownloadService],
 })
 export class ExternalModule {}

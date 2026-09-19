@@ -19,7 +19,7 @@ import { ordersApi } from '../../../lib/api/orders';
 import { ApiError } from '../../../lib/api/client';
 import { PageHeader } from '../../ui/PageHeader';
 import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
-import type { Order } from '@gx-portal/types';
+import { gxPortalMeta, type Order } from '@gx-portal/types';
 import { cn } from '../../../lib/utils';
 import {
   formatPortalDate,
@@ -462,6 +462,7 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
   const canStart  = ['SAVED', 'FAILED', 'CANCELLED'].includes(order.status);
   const canStop   = ['RUNNING', 'QUEUED'].includes(order.status);
   const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status);
+  const canSendGx = Boolean(gxPortalMeta(order)?.report_url) && canReview;
 
   return (
     <div className="flex flex-wrap gap-2 items-center mb-5 p-3 bg-surface border border-border rounded-lg">
@@ -477,6 +478,16 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
         >
           Open Review
           <ArrowRight size={14} strokeWidth={2} aria-hidden />
+        </Button>
+      )}
+      {canSendGx && (
+        <Button
+          variant="secondary"
+          size="sm"
+          isDisabled={busy}
+          onPress={() => run('Send to GX Portal', () => ordersApi.sendGxReport(order.order_id))}
+        >
+          {busy ? 'Sending…' : 'Send to GX Portal'}
         </Button>
       )}
       {canStart && (<>

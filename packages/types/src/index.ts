@@ -4,3 +4,4 @@ export * from './org';
 export * from './report';
 export * from './review';
 export * from './variant';
+export * from './gx-order-schema';

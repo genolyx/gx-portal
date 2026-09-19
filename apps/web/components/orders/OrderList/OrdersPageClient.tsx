@@ -18,6 +18,7 @@ import {
   isPortalServiceCode,
   matchesPortalServiceFilter,
   PORTAL_SERVICE_OPTIONS,
+  gxPortalMeta,
   type Order,
   type UserProfile,
 } from '@gx-portal/types';
@@ -34,6 +35,7 @@ import {
   readIncludeExternalPreference,
   writeIncludeExternalPreference,
 } from '../../../lib/include-external';
+import { downloadGxOrderSchemaJson } from '../../../lib/download-gx-schema';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -475,6 +477,15 @@ function ServiceBadge({ code }: { code: string }) {
   );
 }
 
+function GxBadge({ order }: { order: Order }) {
+  if (!gxPortalMeta(order)) return null;
+  return (
+    <Chip color="accent" size="sm" variant="soft" className="ml-1 max-w-none">
+      <Chip.Label title="Submitted from GX Portal">GX</Chip.Label>
+    </Chip>
+  );
+}
+
 // ─── ReportFilesCell ──────────────────────────────────────────────────────────
 
 function ReportFilesCell({ orderId, status }: { orderId: string; status: string }) {
@@ -592,6 +603,9 @@ function ActionsMenu({
       case 'reprocess-only':
         await run('Reprocess only', () => ordersApi.reprocess(order.order_id));
         return;
+      case 'send-gx':
+        await run('Send to GX Portal', () => ordersApi.sendGxReport(order.order_id));
+        return;
       case 'stop':
         await run('Stop', () => ordersApi.stop(order.order_id));
         return;
@@ -646,6 +660,7 @@ export function OrdersPageClient() {
   const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
   const [includeExternal, setIncludeExternal] = useState(readIncludeExternalPreference);
+  const [schemaService, setSchemaService] = useState('carrier_screening');
 
   // Two-stage filter: pending (in the form) → active (applied to data)
   const [pending, setPending] = useState<FilterState>(EMPTY_FILTER);
@@ -721,9 +736,25 @@ export function OrdersPageClient() {
         title="Orders"
         description="Manage and monitor analysis orders."
         actions={
-          <Button variant="primary" onPress={() => setShowCreate(true)}>
-            + Create an order
-          </Button>
+          <>
+            <SelectField
+              aria-label="Service for field JSON export"
+              value={schemaService}
+              onChange={setSchemaService}
+              fullWidth={false}
+              className="w-52"
+              options={PORTAL_SERVICE_OPTIONS.map((s) => ({ id: s.code, label: s.label }))}
+            />
+            <Button
+              variant="secondary"
+              onPress={() => downloadGxOrderSchemaJson(schemaService)}
+            >
+              Download field JSON
+            </Button>
+            <Button variant="primary" onPress={() => setShowCreate(true)}>
+              + Create an order
+            </Button>
+          </>
         }
       />
 
@@ -798,7 +829,10 @@ export function OrdersPageClient() {
                     </Link>
                   </td>
                   <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
-                    <ServiceBadge code={o.service_code} />
+                    <span className="inline-flex items-center">
+                      <ServiceBadge code={o.service_code} />
+                      <GxBadge order={o} />
+                    </span>
                   </td>
                   <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
                     <span className="text-xs font-mono text-muted">

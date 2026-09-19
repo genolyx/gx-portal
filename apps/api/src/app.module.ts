@@ -12,6 +12,7 @@ import { ClientsModule } from './clients/clients.module';
 import { LabsModule } from './labs/labs.module';
 import { CatalogModule } from './catalog/catalog.module';
 import { ExternalModule } from './external/external.module';
+import { GxModule } from './gx/gx.module';
 
 @Module({
   imports: [
@@ -31,6 +32,7 @@ import { ExternalModule } from './external/external.module';
     SystemModule,
     CatalogModule,
     ExternalModule,
+    GxModule,
   ],
 })
 export class AppModule {}

@@ -1,4 +1,4 @@
-import type { Order } from '@gx-portal/types';
+import { gxPortalMeta, type Order } from '@gx-portal/types';
 
 export const PIPELINE_SERVICES = [
   'carrier_screening',
@@ -17,6 +17,7 @@ export type OrderMenuAction =
   | 'force-run'
   | 'force-run-fresh'
   | 'reprocess-only'
+  | 'send-gx'
   | 'stop'
   | 'delete'
   | 'purge-db';
@@ -51,6 +52,15 @@ export function buildOrderMenuItems(order: Order): OrderMenuItem[] {
       action: 'new-from',
       label: 'New order from this…',
       title: 'New draft with copied clinical fields and FASTQ/BAM paths; enter a new Order ID',
+    });
+  }
+
+  const gx = gxPortalMeta(order);
+  if (gx?.report_url && (st === 'COMPLETED' || st === 'REPORT_READY')) {
+    items.push({
+      action: 'send-gx',
+      label: 'Send to GX Portal',
+      title: 'Upload the latest Report_*.pdf to GX callback.report_url',
     });
   }
 

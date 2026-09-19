@@ -11,6 +11,7 @@ import { cn } from '../../../lib/utils';
 import { DatePickerField } from '../../ui/DatePickerField';
 import { SelectField } from '../../ui/SelectField';
 import { FileBrowseModal } from './FileBrowseModal';
+import { downloadGxOrderSchemaJson } from '../../../lib/download-gx-schema';
 import { portalTodayIso } from '../../../lib/datetime';
 import {
   PORTAL_SERVICE_OPTIONS,
@@ -847,6 +848,13 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               <Modal.Footer>
           {step === 'service' ? (
             <>
+              <Button
+                variant="ghost"
+                size="sm"
+                onPress={() => downloadGxOrderSchemaJson(service)}
+              >
+                Download field JSON
+              </Button>
               <Button variant="ghost" size="sm" onPress={onClose}>Cancel</Button>
               <Button variant="primary" size="sm" onPress={() => setStep('form')}>
                 Next — {SERVICES.find((s) => s.code === service)?.label}

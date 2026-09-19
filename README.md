@@ -82,6 +82,25 @@ Prod uses its own SQLite volume (`gx-portal-data`); default login is still **adm
 
 ---
 
+## GX Portal inbound API
+
+The **external GX order portal** calls **this** NestJS API (not gx-daemon).
+
+Production (nginx): `https://service.genolyx.com/api/v1/...`
+
+| Method | Path | Role |
+|---|---|---|
+| `GET` | `/v1/order-schema?service_code=CARRIER` | Create Order field schema |
+| `POST` | `/v1/orders` | Accept GX `order_id`, download FASTQ in background, start gx-daemon |
+| `POST` | `/v1/orders/{order_id}/send-report` | Portal UI — send latest `Report_*.pdf` to `callback.report_url` |
+
+Auth for schema/create: `Authorization: Bearer {GX_EXTERNAL_API_KEY}` (or `EXTERNAL_API_KEY`).  
+PDF callback to GX: `GX_CALLBACK_API_KEY`.
+
+Orders list **Download field JSON** exports the same schema GX can import. `order_id`, hospital/doctor/MRN, `sample_id`, and FASTQ stay outside `service_data`.
+
+---
+
 ## Features
 
 | Feature | Path |
