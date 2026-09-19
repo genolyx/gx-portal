@@ -1,16 +1,16 @@
 import { Injectable, Logger } from '@nestjs/common';
-import { ConfigService } from '@nestjs/config';
 import { readFile } from 'fs/promises';
 import * as path from 'path';
+import { ExternalKeysService } from '../system/external-keys.service';
 
 @Injectable()
 export class GxCallbacksService {
   private readonly logger = new Logger(GxCallbacksService.name);
 
-  constructor(private readonly config: ConfigService) {}
+  constructor(private readonly keys: ExternalKeysService) {}
 
   private authHeaders(): Record<string, string> {
-    const key = (this.config.get<string>('GX_CALLBACK_API_KEY') ?? '').trim();
+    const key = this.keys.getOutbound();
     if (!key) return {};
     return { Authorization: `Bearer ${key}` };
   }

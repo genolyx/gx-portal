@@ -4,6 +4,7 @@ import type { Response } from 'express';
 import { Readable } from 'stream';
 import { SystemService } from './system.service';
 import { HostResourcesService } from './host-resources.service';
+import { ExternalKeysService } from './external-keys.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { API_VERSION } from '../version';
 
@@ -13,6 +14,7 @@ export class SystemController {
   constructor(
     private readonly systemService: SystemService,
     private readonly hostResourcesService: HostResourcesService,
+    private readonly externalKeys: ExternalKeysService,
   ) {}
 
   @Get('health')
@@ -131,5 +133,27 @@ export class SystemController {
   @ApiOperation({ summary: 'Host CPU / memory / disk metrics (admin only)' })
   getHostResources() {
     return this.hostResourcesService.getAll();
+  }
+
+  @Get('external-keys')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'External Portal key status (masked, admin only)' })
+  getExternalKeys() {
+    return this.externalKeys.getStatus();
+  }
+
+  @Post('external-keys/inbound/generate')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Generate / rotate External Portal inbound API key' })
+  generateInboundKey() {
+    const key = this.externalKeys.generateInbound();
+    return { key, ...this.externalKeys.getStatus() };
+  }
+
+  @Put('external-keys/outbound')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Save External Portal outbound (callback) API key' })
+  setOutboundKey(@Body() body: { key?: string }) {
+    return this.externalKeys.setOutbound(body?.key ?? '');
   }
 }

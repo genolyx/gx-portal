@@ -13,8 +13,10 @@ import {
   Select,
   Switch,
 } from '@heroui/react';
-import { Pause, Play, Trash2 } from 'lucide-react';
+import { Pause, Play, Trash2, Eye, EyeOff, Copy, Check } from 'lucide-react';
 import { systemApi } from '../../lib/api/system';
+import { authApi } from '../../lib/api/auth';
+import type { UserProfile } from '@gx-portal/types';
 import { DAEMON_PRESETS, DAEMON_URL_KEY } from '../../lib/daemon-presets';
 import { formatPortalTimeNow } from '../../lib/datetime';
 import { LabeledCheckbox } from '../ui/LabeledCheckbox';
@@ -677,17 +679,197 @@ function PipelineOptionsSection() {
   );
 }
 
+function ExternalPortalKeysSection() {
+  const [status, setStatus] = useState<{
+    inboundConfigured: boolean;
+    outboundConfigured: boolean;
+    inboundPreview: string | null;
+    outboundPreview: string | null;
+  } | null>(null);
+  const [outboundDraft, setOutboundDraft] = useState('');
+  const [showOutbound, setShowOutbound] = useState(false);
+  const [freshInbound, setFreshInbound] = useState<string | null>(null);
+  const [showInbound, setShowInbound] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const load = useCallback(() => {
+    systemApi
+      .getExternalKeys()
+      .then(setStatus)
+      .catch(() => setStatus(null));
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const generateInbound = async () => {
+    if (
+      status?.inboundConfigured &&
+      !window.confirm('Rotate inbound key? The previous key will stop working immediately.')
+    ) {
+      return;
+    }
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await systemApi.generateInboundKey();
+      setFreshInbound(res.key);
+      setShowInbound(true);
+      setStatus({
+        inboundConfigured: res.inboundConfigured,
+        outboundConfigured: res.outboundConfigured,
+        inboundPreview: res.inboundPreview,
+        outboundPreview: res.outboundPreview,
+      });
+      setMsg({
+        ok: true,
+        text: 'Inbound key generated. Copy it now and paste into the external portal Outbound API key field.',
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Generate failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const saveOutbound = async () => {
+    setBusy(true);
+    setMsg(null);
+    try {
+      const res = await systemApi.setOutboundKey(outboundDraft);
+      setStatus(res);
+      setOutboundDraft('');
+      setMsg({
+        ok: true,
+        text: outboundDraft.trim()
+          ? 'Outbound key saved (used when gx-portal calls the external portal).'
+          : 'Outbound key cleared.',
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const copyInbound = async () => {
+    if (!freshInbound) return;
+    try {
+      await navigator.clipboard.writeText(freshInbound);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <Section
+      title="External Portal"
+      description="Keys for integrating with an external portal. Inbound = they call gx-portal (their Outbound field). Outbound = we call them back (their Inbound field)."
+    >
+      <div className="flex flex-col gap-5">
+        <div className="flex flex-col gap-1.5">
+          <Label>Inbound API key (gx-portal receives)</Label>
+          <p className="text-xs text-muted">
+            Generate here, then paste into the external portal as <strong>Outbound API key</strong>.
+            {status?.inboundConfigured && status.inboundPreview
+              ? ` Current: ${status.inboundPreview}`
+              : ' Not configured.'}
+          </p>
+          {freshInbound && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type={showInbound ? 'text' : 'password'}
+                value={freshInbound}
+                readOnly
+                fullWidth
+                className="font-mono text-sm"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => setShowInbound((v) => !v)}
+                aria-label={showInbound ? 'Hide key' : 'Show key'}
+              >
+                {showInbound ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button size="sm" variant="secondary" onPress={copyInbound}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? ' Copied' : ' Copy'}
+              </Button>
+            </div>
+          )}
+          <div>
+            <Button size="sm" variant="primary" isDisabled={busy} onPress={generateInbound}>
+              {status?.inboundConfigured ? 'Generate new inbound key' : 'Generate inbound key'}
+            </Button>
+          </div>
+        </div>
+
+        <div className="flex flex-col gap-1.5 border-t border-border pt-4">
+          <Label>Outbound API key (gx-portal sends on callbacks)</Label>
+          <p className="text-xs text-muted">
+            Paste the key the external portal shows under <strong>Inbound API key</strong>.
+            {status?.outboundConfigured && status.outboundPreview
+              ? ` Saved: ${status.outboundPreview}`
+              : ' Not configured.'}
+          </p>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="flex min-w-[240px] flex-1 flex-col gap-1.5">
+              <Input
+                type={showOutbound ? 'text' : 'password'}
+                value={outboundDraft}
+                onChange={(e) => setOutboundDraft(e.target.value)}
+                placeholder="Paste external portal inbound key"
+                fullWidth
+                className="font-mono text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={() => setShowOutbound((v) => !v)}
+              aria-label={showOutbound ? 'Hide key' : 'Show key'}
+            >
+              {showOutbound ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+            <Button size="sm" variant="primary" isDisabled={busy} onPress={saveOutbound}>
+              Save
+            </Button>
+          </div>
+        </div>
+
+        {msg && (
+          <p className={msg.ok ? 'text-sm text-success' : 'text-sm text-danger'}>{msg.text}</p>
+        )}
+      </div>
+    </Section>
+  );
+}
+
 export function ConfigPageClient() {
+  const [user, setUser] = useState<UserProfile | null>(null);
+  const isAdmin = user?.role === 'admin';
+
+  useEffect(() => {
+    authApi.me().then(setUser).catch(() => setUser(null));
+  }, []);
+
   return (
     <div>
       <PageHeader
         title="Configuration"
-        description="Portal and gx-daemon connection, AI provider, and pipeline options."
+        description="Portal and gx-daemon connection, AI provider, pipeline options, and external portal keys."
       />
       <div className="flex flex-col gap-6">
         <DaemonConnectionSection />
         <AiProviderSection />
         <PipelineOptionsSection />
+        {isAdmin ? <ExternalPortalKeysSection /> : null}
       </div>
     </div>
   );

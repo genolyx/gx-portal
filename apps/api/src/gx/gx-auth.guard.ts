@@ -9,15 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 import type { RequestUser } from '../orders/order-registry.service';
+import { ExternalKeysService } from '../system/external-keys.service';
 
 export type GxApiRequest = Request & { user?: RequestUser };
-
-const PLACEHOLDER_KEYS = new Set([
-  '',
-  'generate-a-long-secret',
-  'dev-external-api-key-change-me',
-  'change-me',
-]);
 
 function headerValue(raw: string | string[] | undefined): string {
   if (Array.isArray(raw)) return String(raw[0] ?? '').trim();
@@ -38,24 +32,21 @@ function extractBearer(authorization?: string): string | undefined {
 }
 
 /**
- * GX contract: Authorization: Bearer {GX_EXTERNAL_API_KEY}.
- * EXTERNAL_API_KEY is accepted as a fallback so one key can be shared.
+ * GX contract: Authorization: Bearer {inbound key}.
+ * Uses Config-managed inbound key (and env fallbacks).
  */
 @Injectable()
 export class GxBearerGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly keys: ExternalKeysService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const keys = [
-      this.config.get<string>('GX_EXTERNAL_API_KEY'),
-      this.config.get<string>('EXTERNAL_API_KEY'),
-    ]
-      .map((k) => (k ?? '').trim())
-      .filter((k) => k && !PLACEHOLDER_KEYS.has(k));
-
-    if (keys.length === 0) {
+    const candidates = this.keys.getInboundCandidates();
+    if (candidates.length === 0) {
       throw new ServiceUnavailableException(
-        'GX inbound API is not configured (set GX_EXTERNAL_API_KEY or EXTERNAL_API_KEY)',
+        'GX inbound API is not configured (generate an Inbound key in Config)',
       );
     }
 
@@ -65,7 +56,7 @@ export class GxBearerGuard implements CanActivate {
       headerValue(req.headers['x-api-key']) ||
       '';
 
-    if (!provided || !keys.some((expected) => safeEqual(provided, expected))) {
+    if (!provided || !candidates.some((expected) => safeEqual(provided, expected))) {
       throw new UnauthorizedException('Invalid or missing API key');
     }
 

@@ -198,4 +198,29 @@ export const systemApi = {
     api.get<unknown>('/system/health'),
 
   hostResources: () => api.get<unknown>('/system/host-resources'),
+
+  getExternalKeys: () =>
+    api.get<{
+      inboundConfigured: boolean;
+      outboundConfigured: boolean;
+      inboundPreview: string | null;
+      outboundPreview: string | null;
+    }>('/system/external-keys'),
+
+  generateInboundKey: () =>
+    api.post<{
+      key: string;
+      inboundConfigured: boolean;
+      outboundConfigured: boolean;
+      inboundPreview: string | null;
+      outboundPreview: string | null;
+    }>('/system/external-keys/inbound/generate'),
+
+  setOutboundKey: (key: string) =>
+    api.put<{
+      inboundConfigured: boolean;
+      outboundConfigured: boolean;
+      inboundPreview: string | null;
+      outboundPreview: string | null;
+    }>('/system/external-keys/outbound', { key }),
 };

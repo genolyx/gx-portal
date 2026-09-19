@@ -6,6 +6,7 @@ import { OrdersModule } from './orders/orders.module';
 import { ReviewModule } from './review/review.module';
 import { ReportModule } from './report/report.module';
 import { SystemModule } from './system/system.module';
+import { ExternalKeysModule } from './system/external-keys.module';
 import { AuthModule } from './auth/auth.module';
 import { UsersModule } from './users/users.module';
 import { ClientsModule } from './clients/clients.module';
@@ -21,6 +22,7 @@ import { GxModule } from './gx/gx.module';
       envFilePath: ['.env.local', '.env'],
     }),
     DbModule,      // global — provides DbService to all
+    ExternalKeysModule, // global — inbound/outbound API keys
     DaemonModule,
     AuthModule,
     UsersModule,

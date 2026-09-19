@@ -9,15 +9,9 @@ import { ConfigService } from '@nestjs/config';
 import { timingSafeEqual } from 'crypto';
 import type { Request } from 'express';
 import type { RequestUser } from '../../orders/order-registry.service';
+import { ExternalKeysService } from '../../system/external-keys.service';
 
 export type ApiKeyRequest = Request & { user?: RequestUser };
-
-const PLACEHOLDER_KEYS = new Set([
-  '',
-  'generate-a-long-secret',
-  'dev-external-api-key-change-me',
-  'change-me',
-]);
 
 function headerValue(raw: string | string[] | undefined): string {
   if (Array.isArray(raw)) return String(raw[0] ?? '').trim();
@@ -38,18 +32,21 @@ function extractApiKeyAuth(authorization?: string): string | undefined {
 }
 
 /**
- * Validates `X-API-Key` (or `Authorization: ApiKey …`) against EXTERNAL_API_KEY
- * and attaches a synthetic client user for order ownership / ID allocation.
+ * Validates `X-API-Key` (or `Authorization: ApiKey …`) against the inbound
+ * External Portal key (Config DB or EXTERNAL_API_KEY env).
  */
 @Injectable()
 export class ApiKeyGuard implements CanActivate {
-  constructor(private readonly config: ConfigService) {}
+  constructor(
+    private readonly config: ConfigService,
+    private readonly keys: ExternalKeysService,
+  ) {}
 
   canActivate(context: ExecutionContext): boolean {
-    const expected = (this.config.get<string>('EXTERNAL_API_KEY') ?? '').trim();
-    if (!expected || PLACEHOLDER_KEYS.has(expected)) {
+    const candidates = this.keys.getInboundCandidates();
+    if (candidates.length === 0) {
       throw new ServiceUnavailableException(
-        'External API is not configured (set EXTERNAL_API_KEY in apps/api/.env)',
+        'External API is not configured (generate an Inbound key in Config, or set EXTERNAL_API_KEY)',
       );
     }
 
@@ -59,7 +56,7 @@ export class ApiKeyGuard implements CanActivate {
       extractApiKeyAuth(headerValue(req.headers.authorization)) ||
       '';
 
-    if (!provided || !safeEqual(provided, expected)) {
+    if (!provided || !candidates.some((expected) => safeEqual(provided, expected))) {
       throw new UnauthorizedException('Invalid or missing API key');
     }
 
