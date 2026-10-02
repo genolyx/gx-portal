@@ -498,11 +498,11 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
           variant="primary"
           size="sm"
           isDisabled={busy}
-          onPress={() => run('Start', () => ordersApi.start(order.order_id))}
+          onPress={() => run('Submit', () => ordersApi.start(order.order_id))}
           className="gap-1.5"
         >
           <Play size={14} strokeWidth={2} aria-hidden />
-          {busy ? 'Starting…' : 'Start'}
+          {busy ? 'Submitting…' : 'Submit'}
         </Button>
         <Button
           variant="secondary"

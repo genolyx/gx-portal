@@ -603,8 +603,15 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                       onChange={(v) => {
                         setWesPanel(v);
                         setC('wes_panel_id', v);
-                        if (v === FULL_WES_PANEL_ID) setPanelFilterAfterAnalysis(false);
-                        else if (wesPanel === FULL_WES_PANEL_ID) setPanelFilterAfterAnalysis(true);
+                        if (v === FULL_WES_PANEL_ID) {
+                          setPanelFilterAfterAnalysis(false);
+                          setIncludeApoePgx(false);
+                          setC('include_pgx', false);
+                          setC('reuse_prior_pipeline_outputs', false);
+                        } else if (wesPanel === FULL_WES_PANEL_ID) {
+                          setPanelFilterAfterAnalysis(true);
+                          setC('include_pgx', true);
+                        }
                       }}
                       placeholder="— Select interpretation panel (required) —"
                       groups={[

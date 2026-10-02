@@ -52,6 +52,10 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
   const c = (p.carrier ?? {}) as Record<string, unknown>;
   const n = (p.nipt ?? {}) as Record<string, unknown>;
 
+  const vcfOnly =
+    service === 'whole_exome' &&
+    (!str(p.wes_panel_id || c.wes_panel_id) || str(p.wes_panel_id || c.wes_panel_id) === FULL_WES_PANEL_ID);
+
   const carrier: Record<string, unknown> = {
     test_category: str(c.test_category) || 'standard_carrier',
     package_code: str(c.package_code) || '',
@@ -81,10 +85,14 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
     report_mode: c.report_mode === 'couples' ? 'couples' : 'single',
     partner_order_id: str(c.partner_order_id),
     prior_order_id: mode === 'followUp' ? order.order_id : str(c.prior_order_id),
-    reuse_prior_pipeline_outputs: mode === 'followUp' ? true : bool(c.reuse_prior_pipeline_outputs),
+    reuse_prior_pipeline_outputs: vcfOnly
+      ? false
+      : mode === 'followUp'
+        ? true
+        : bool(c.reuse_prior_pipeline_outputs),
     wes_panel_id: str(p.wes_panel_id || c.wes_panel_id),
     capture_panel_id: str(c.capture_panel_id) || 'twist-exome2',
-    include_pgx: bool(c.include_pgx, true),
+    include_pgx: vcfOnly ? false : bool(c.include_pgx, true),
   };
 
   const nipt: Record<string, unknown> = {
@@ -134,18 +142,10 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
     maxAf: p.max_af != null ? String(p.max_af) : '',
     hpoTerms: str(p.hpo_terms),
     geneFilter: str(p.gene_filter),
-    wesPanel:
-      service === 'whole_exome' &&
-      (!str(p.wes_panel_id || c.wes_panel_id) || str(p.wes_panel_id || c.wes_panel_id) === FULL_WES_PANEL_ID)
-        ? FULL_WES_PANEL_ID
-        : str(p.wes_panel_id || c.wes_panel_id),
+    wesPanel: vcfOnly ? FULL_WES_PANEL_ID : str(p.wes_panel_id || c.wes_panel_id),
     capturePanel: str(c.capture_panel_id) || 'twist-exome2',
-    includeApoePgx: bool(p.include_apoe_pgx),
-    panelFilterAfterAnalysis:
-      service === 'whole_exome' &&
-      (!str(p.wes_panel_id || c.wes_panel_id) || str(p.wes_panel_id || c.wes_panel_id) === FULL_WES_PANEL_ID)
-        ? false
-        : bool(p.panel_filter_after_analysis, true),
+    includeApoePgx: vcfOnly ? false : bool(p.include_apoe_pgx),
+    panelFilterAfterAnalysis: vcfOnly ? false : bool(p.panel_filter_after_analysis, true),
     interpretationGenesExtra: str(p.interpretation_genes_extra || c.interpretation_genes_extra),
     carrier,
     nipt,
