@@ -3,7 +3,10 @@
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { Accordion, Button, Card, Chip, Disclosure, Spinner, Tabs } from '@heroui/react';
 import { catalogApi } from '../../lib/api/catalog';
+import { ordersApi } from '../../lib/api/orders';
 import { reviewApi, reviewResultUrl } from '../../lib/api/review';
+import { isVcfOnlyWesOrder } from '@gx-portal/types';
+import { VcfDownloadButtons } from '../orders/VcfDownloadButtons';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { getVisibleReviewTabs, reviewOrderKind, type ReviewTabId } from '../../lib/review-tabs';
 import { isSgniptReviewData, normalizeSgniptReviewData } from '../../lib/sgnipt-normalize';
@@ -441,6 +444,7 @@ function SgniptBanner({ rd }: { rd: ReviewData }) {
 
 export function ReviewPageClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
+  const [vcfOnly, setVcfOnly] = useState(false);
   const [error, setError]     = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [tab, setTab]         = useState<ReviewTabId>('variants');
@@ -480,6 +484,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     const ac = new AbortController();
     const started = performance.now();
     setLoading(true);
+    setVcfOnly(false);
     setError('');
     setElapsedMs(0);
     reset();
@@ -492,11 +497,21 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     }, 100);
 
     const url = reviewResultUrl(orderId);
-    console.info(`[review] fetch start ${url}`);
 
-    reviewApi
-      .getResult(orderId, { signal: ac.signal })
+    ordersApi
+      .getById(orderId)
+      .then((order) => {
+        if (ac.signal.aborted) return null;
+        if (isVcfOnlyWesOrder(order)) {
+          setVcfOnly(true);
+          return null;
+        }
+        setVcfOnly(false);
+        console.info(`[review] fetch start ${url}`);
+        return reviewApi.getResult(orderId, { signal: ac.signal });
+      })
       .then((data) => {
+        if (!data || ac.signal.aborted) return;
         const ms = Math.round(performance.now() - started);
         console.info(`[review] fetch ok ${url} (${ms}ms)`, {
           variants: data?.variants?.length ?? 0,
@@ -567,7 +582,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
   }, [visibleTabs, tab]);
 
   useEffect(() => {
-    if (tab !== 'pgx' || loading) return;
+    if (tab !== 'pgx' || loading || vcfOnly) return;
     let cancelled = false;
     reviewApi
       .getResult(orderId)
@@ -579,7 +594,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [tab, orderId, loading, patchReviewData]);
+  }, [tab, orderId, loading, vcfOnly, patchReviewData]);
 
   if (loading) {
     return (
@@ -590,6 +605,22 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
           backHref="/orders"
         />
         <ReviewLoadingState orderId={orderId} elapsedMs={elapsedMs} />
+      </div>
+    );
+  }
+
+  if (vcfOnly) {
+    return (
+      <div>
+        <PageHeader
+          title="Annotated VCF"
+          description={`Order: ${orderId}`}
+          backHref={`/orders/${encodeURIComponent(orderId)}`}
+        />
+        <p className="mb-3 text-sm text-muted">
+          Whole Exome (vcf only) keeps the called VCF and the VEP-annotated VCF.
+        </p>
+        <VcfDownloadButtons orderId={orderId} />
       </div>
     );
   }

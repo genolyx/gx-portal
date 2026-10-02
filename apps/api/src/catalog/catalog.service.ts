@@ -1,9 +1,38 @@
-import { Injectable } from '@nestjs/common';
+import { BadRequestException, Injectable } from '@nestjs/common';
 import * as fs from 'fs';
+import * as path from 'path';
 import { DaemonService } from '../daemon/daemon.service';
 
 const WES_PANELS_CUSTOM_PATH =
   process.env.WES_PANELS_CUSTOM_JSON ?? '/data/wes_panels/wes_panels_custom.json';
+
+const CAPTURE_PANELS_PATH =
+  process.env.CAPTURE_PANELS_PATH ??
+  path.join(path.dirname(process.env.USERS_DB_PATH || '/data/users.db'), 'capture_panels.json');
+
+export interface CapturePanelRecord {
+  id: string;
+  label: string;
+  primary_bed?: string;
+  capture_bed?: string;
+  builtin?: boolean;
+  /** True for the kit Create Order selects first. Not stored on each row. */
+  default?: boolean;
+}
+
+const TWIST_EXOME2_PRIMARY_BED =
+  '/home/ken/gx-exome/data/bed/twist-exome2/targets.bed';
+
+const BUILTIN_CAPTURE_PANELS: CapturePanelRecord[] = [
+  {
+    id: 'twist-exome2',
+    label: 'Twist Exome 2.0',
+    primary_bed: TWIST_EXOME2_PRIMARY_BED,
+    builtin: true,
+  },
+];
+
+const CAPTURE_PANEL_ID_RE = /^[a-z][a-z0-9_-]{1,63}$/;
 
 type LitQuery = Record<string, string | number | boolean | undefined>;
 
@@ -53,6 +82,113 @@ export class CatalogService {
 
   deletePanel(id: string) {
     return this.daemon.delete<unknown>(`/api/portal/wes-panels/custom/${encodeURIComponent(id)}`);
+  }
+
+  // ── Capture kits (Twist / Roche HyperExome, …) ─────────────────────
+  listCapturePanels(): { panels: CapturePanelRecord[] } {
+    const store = this.readCaptureStore();
+    const byId = new Map<string, CapturePanelRecord>();
+    for (const builtin of BUILTIN_CAPTURE_PANELS) byId.set(builtin.id, { ...builtin });
+    for (const row of store.panels) {
+      const base = byId.get(row.id);
+      byId.set(row.id, {
+        ...base,
+        ...row,
+        primary_bed: row.primary_bed || base?.primary_bed,
+        capture_bed: row.capture_bed || base?.capture_bed,
+        builtin: base?.builtin || undefined,
+        default: undefined,
+      });
+    }
+    const ids = [...byId.keys()];
+    const fallback = ids.includes('twist-exome2') ? 'twist-exome2' : ids[0] ?? '';
+    const defaultId = ids.includes(store.defaultId) ? store.defaultId : fallback;
+    return {
+      panels: [...byId.values()].map((panel) => ({
+        ...panel,
+        default: panel.id === defaultId,
+      })),
+    };
+  }
+
+  saveCapturePanel(body: unknown): CapturePanelRecord {
+    const raw = (body ?? {}) as Record<string, unknown>;
+    const id = String(raw.id ?? '').trim();
+    const label = String(raw.label ?? '').trim();
+    const primary = String(raw.primary_bed ?? '').trim();
+    const capture = String(raw.capture_bed ?? '').trim();
+    if (!CAPTURE_PANEL_ID_RE.test(id)) {
+      throw new BadRequestException(
+        'Panel ID must start with a letter and use lowercase letters, digits, _ or -.',
+      );
+    }
+    if (!label) throw new BadRequestException('Display name is required.');
+    const isBuiltin = BUILTIN_CAPTURE_PANELS.some((p) => p.id === id);
+    if (!isBuiltin && !primary) {
+      throw new BadRequestException('Primary BED is required. It is the calling target (primary.bed / targets.bed).');
+    }
+    const row: CapturePanelRecord = {
+      id,
+      label,
+      ...(primary ? { primary_bed: primary } : {}),
+      ...(capture ? { capture_bed: capture } : {}),
+    };
+    const store = this.readCaptureStore();
+    const custom = store.panels.filter((p) => p.id !== id);
+    custom.push(row);
+    this.writeCaptureStore(custom, store.defaultId);
+    return { ...row, ...(isBuiltin ? { builtin: true } : {}) };
+  }
+
+  setDefaultCapturePanel(id: string): { panels: CapturePanelRecord[] } {
+    const known = this.listCapturePanels().panels.some((p) => p.id === id);
+    if (!known) throw new BadRequestException(`Capture panel '${id}' was not found.`);
+    const store = this.readCaptureStore();
+    this.writeCaptureStore(store.panels, id);
+    return this.listCapturePanels();
+  }
+
+  deleteCapturePanel(id: string): { ok: true } {
+    const store = this.readCaptureStore();
+    const next = store.panels.filter((p) => p.id !== id);
+    if (next.length === store.panels.length && !BUILTIN_CAPTURE_PANELS.some((p) => p.id === id)) {
+      throw new BadRequestException(`Capture panel '${id}' was not found.`);
+    }
+    const defaultId = store.defaultId === id ? 'twist-exome2' : store.defaultId;
+    this.writeCaptureStore(next, defaultId);
+    return { ok: true };
+  }
+
+  private readCaptureStore(): { defaultId: string; panels: CapturePanelRecord[] } {
+    try {
+      if (!fs.existsSync(CAPTURE_PANELS_PATH)) return { defaultId: '', panels: [] };
+      const data = JSON.parse(fs.readFileSync(CAPTURE_PANELS_PATH, 'utf-8')) as {
+        default_id?: string;
+        panels?: CapturePanelRecord[];
+      };
+      return {
+        defaultId: String(data.default_id ?? '').trim(),
+        panels: Array.isArray(data.panels) ? data.panels : [],
+      };
+    } catch {
+      return { defaultId: '', panels: [] };
+    }
+  }
+
+  private writeCaptureStore(panels: CapturePanelRecord[], defaultId: string) {
+    fs.mkdirSync(path.dirname(CAPTURE_PANELS_PATH), { recursive: true });
+    const tmp = `${CAPTURE_PANELS_PATH}.tmp`;
+    const body = {
+      ...(defaultId ? { default_id: defaultId } : {}),
+      panels: panels.map((row) => ({
+        id: row.id,
+        label: row.label,
+        ...(row.primary_bed ? { primary_bed: row.primary_bed } : {}),
+        ...(row.capture_bed ? { capture_bed: row.capture_bed } : {}),
+      })),
+    };
+    fs.writeFileSync(tmp, JSON.stringify(body, null, 2));
+    fs.renameSync(tmp, CAPTURE_PANELS_PATH);
   }
 
   // ── File browse (daemon server paths) ───────────────────────────────

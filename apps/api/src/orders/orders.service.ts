@@ -89,7 +89,12 @@ export class OrdersService {
       undefined;
 
     const description = body.description?.trim() || undefined;
-    const daemonBody = { ...body, order_id: orderId, work_dir: workDir };
+    const daemonBody = {
+      ...body,
+      order_id: orderId,
+      work_dir: workDir,
+      service_code: serviceCode,
+    };
     delete (daemonBody as Record<string, unknown>).client_id;
     delete (daemonBody as Record<string, unknown>).description;
     // External-only fields must never reach gx-daemon
@@ -180,6 +185,12 @@ export class OrdersService {
   async getFiles(id: string, user?: RequestUser): Promise<unknown> {
     return this.withDaemonOrderId(id, user, (daemonId) =>
       this.daemon.get(this.orderPath(daemonId, '/files')),
+    );
+  }
+
+  async getVcfDownloads(id: string, user?: RequestUser): Promise<unknown> {
+    return this.withDaemonOrderId(id, user, (daemonId) =>
+      this.daemon.get(this.orderPath(daemonId, '/vcf-downloads')),
     );
   }
 

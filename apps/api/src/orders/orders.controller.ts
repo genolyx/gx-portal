@@ -42,6 +42,12 @@ export class OrdersController {
     return this.ordersService.getFiles(id, this.user(req));
   }
 
+  @Get(':id/vcf-downloads')
+  @ApiOperation({ summary: 'Locate called VCF and annotated VCF for a vcf-only exome' })
+  getVcfDownloads(@Param('id') id: string, @Req() req: Request) {
+    return this.ordersService.getVcfDownloads(id, this.user(req));
+  }
+
   @Get(':id/pipeline-log')
   @ApiOperation({ summary: 'Get pipeline log (plain text)' })
   async getLog(

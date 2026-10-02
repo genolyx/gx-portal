@@ -8,7 +8,7 @@ import { ordersApi } from '../../lib/api/orders';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { PageHeader } from '../ui/PageHeader';
 import { OrderStatusBadge } from '../ui/OrderStatusBadge';
-import type { Order } from '@gx-portal/types';
+import { isVcfOnlyWesOrder, type Order } from '@gx-portal/types';
 
 const REVIEWABLE_STATUSES = new Set(['COMPLETED', 'REPORT_READY']);
 
@@ -20,7 +20,11 @@ export function ReviewListPageClient() {
   const load = useCallback(async () => {
     try {
       const res = await ordersApi.list();
-      setOrders((res.orders ?? []).filter((o) => REVIEWABLE_STATUSES.has(o.status)));
+      setOrders(
+        (res.orders ?? []).filter(
+          (o) => REVIEWABLE_STATUSES.has(o.status) && !isVcfOnlyWesOrder(o),
+        ),
+      );
     } finally {
       setLoading(false);
     }

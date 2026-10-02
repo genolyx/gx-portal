@@ -19,7 +19,8 @@ import { ordersApi } from '../../../lib/api/orders';
 import { ApiError } from '../../../lib/api/client';
 import { PageHeader } from '../../ui/PageHeader';
 import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
-import { gxPortalMeta, type Order } from '@gx-portal/types';
+import { gxPortalMeta, isVcfOnlyWesOrder, type Order } from '@gx-portal/types';
+import { VcfDownloadButtons } from '../VcfDownloadButtons';
 import { cn } from '../../../lib/utils';
 import {
   formatPortalDate,
@@ -461,7 +462,8 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
 
   const canStart  = ['SAVED', 'FAILED', 'CANCELLED'].includes(order.status);
   const canStop   = ['RUNNING', 'QUEUED'].includes(order.status);
-  const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status);
+  const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status) && !isVcfOnlyWesOrder(order);
+  const canDownloadVcf = ['COMPLETED', 'REPORT_READY'].includes(order.status) && isVcfOnlyWesOrder(order);
   const canSendGx = Boolean(gxPortalMeta(order)?.report_url) && canReview;
 
   return (
@@ -469,6 +471,7 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
       <span className="text-[11px] text-muted flex-1 min-w-[200px]">
         Click a row to open detail. Use buttons to control the pipeline.
       </span>
+      {canDownloadVcf && <VcfDownloadButtons orderId={order.order_id} />}
       {canReview && (
         <Button
           variant="primary"
@@ -766,7 +769,18 @@ export function OrderDetailPage({ id }: { id: string }) {
       <div className="flex flex-col gap-4">
 
         {/* 1. Report Files — top position when available */}
-        <ReportFilesSection orderId={order.order_id} status={order.status} />
+        {isVcfOnlyWesOrder(order) ? (
+          ['COMPLETED', 'REPORT_READY'].includes(order.status) && (
+            <Section title="VCF">
+              <p className="text-[11px] text-muted mb-3">
+                Whole Exome (vcf only) keeps the called VCF and the VEP-annotated VCF.
+              </p>
+              <VcfDownloadButtons orderId={order.order_id} />
+            </Section>
+          )
+        ) : (
+          <ReportFilesSection orderId={order.order_id} status={order.status} />
+        )}
 
         {/* 2. Order Logistics & Pipeline */}
         <Section title="Order Logistics & Pipeline">

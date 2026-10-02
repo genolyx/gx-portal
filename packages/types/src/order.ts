@@ -34,6 +34,24 @@ export const PORTAL_SERVICE_ALIASES = [
   'health_snp',
 ] as const;
 
+/** Primary (interpretation) value: annotated exome, no gene-panel filter. */
+export const FULL_WES_PANEL_ID = 'full_wes';
+export const FULL_WES_PANEL_LABEL = 'Whole Exome (vcf only)';
+
+/** True when the order is Whole Exome (vcf only): annotated VCF, not a clinical review set. */
+export function isVcfOnlyWesOrder(order: { params?: OrderParams | null } | null | undefined): boolean {
+  const params = order?.params;
+  if (!params || typeof params !== 'object') return false;
+  const record = params as Record<string, unknown>;
+  const carrier = record.carrier;
+  const fromCarrier =
+    carrier && typeof carrier === 'object'
+      ? (carrier as Record<string, unknown>).wes_panel_id
+      : undefined;
+  const raw = record.wes_panel_id ?? fromCarrier;
+  return String(raw ?? '').trim() === FULL_WES_PANEL_ID;
+}
+
 export const PORTAL_SERVICE_OPTIONS: ReadonlyArray<{ code: PortalServiceCode; label: string }> = [
   { code: 'carrier_screening', label: 'Carrier Screening' },
   { code: 'whole_exome', label: 'Whole Exome' },
@@ -96,6 +114,8 @@ export interface WesParams {
   patient_gender?: string;
   wes_panel_id?: string;
   backbone_bed?: string;
+  /** Probe-footprint BED. QC metrics only; not used for calling. */
+  capture_bed?: string;
   input_bam?: string;
   input_bam_csv?: string;
 }

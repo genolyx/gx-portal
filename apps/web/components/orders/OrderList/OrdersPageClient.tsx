@@ -13,9 +13,13 @@ import { SelectField } from '../../ui/SelectField';
 import { RefreshButton } from '../../ui/RefreshButton';
 import { CreateOrderModal } from '../CreateOrder/CreateOrderModal';
 import { ReportDownloadLink } from '../ReportDownloadLink';
+import { VcfDownloadButtons } from '../VcfDownloadButtons';
 import { reportLangLabel } from '../../../lib/report-downloads';
 import {
+  FULL_WES_PANEL_ID,
+  FULL_WES_PANEL_LABEL,
   isPortalServiceCode,
+  isVcfOnlyWesOrder,
   matchesPortalServiceFilter,
   PORTAL_SERVICE_OPTIONS,
   gxPortalMeta,
@@ -65,6 +69,15 @@ const EMPTY_FILTER: FilterState = {
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUSES = ['', 'SAVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'REPORT_READY', 'FAILED', 'CANCELLED'];
+/** Statuses that still change. Completed and saved rows are not polled. */
+const LIVE_ORDER_STATUSES = new Set([
+  'QUEUED',
+  'RUNNING',
+  'DOWNLOADING',
+  'PROCESSING',
+  'UPLOADING',
+  'RECEIVED',
+]);
 const PORTAL_SERVICES: { value: string; label: string }[] = [
   { value: '', label: 'All Services' },
   ...PORTAL_SERVICE_OPTIONS.map(({ code, label }) => ({ value: code, label })),
@@ -119,6 +132,7 @@ function getPrimaryInterpretation(o: Order): string {
       : null;
   const raw = p.wes_panel_id ?? carrier?.wes_panel_id;
   if (raw == null || String(raw).trim() === '') return '';
+  if (String(raw).trim() === FULL_WES_PANEL_ID) return FULL_WES_PANEL_LABEL;
   // Dropdown labels look like "Carrier_302 (~358 genes)" — show short id/name only
   return String(raw).replace(/\s*\(\s*~\d+\s*genes?\s*\)\s*$/i, '').trim();
 }
@@ -667,6 +681,8 @@ export function OrdersPageClient() {
   const [active,  setActive]  = useState<FilterState>(EMPTY_FILTER);
 
   const isAdmin = user?.role === 'admin';
+  const ordersRef = useRef(orders);
+  ordersRef.current = orders;
 
   useEffect(() => {
     authApi.me().then(setUser).catch(() => setUser(null));
@@ -688,11 +704,27 @@ export function OrdersPageClient() {
     }
   }, [includeExternal]);
 
+  // Terminal rows stay on screen. Only in-progress orders are re-read from the daemon.
+  const refreshLive = useCallback(async () => {
+    const live = ordersRef.current.filter((o) =>
+      LIVE_ORDER_STATUSES.has(String(o.status ?? '').toUpperCase()),
+    );
+    if (live.length === 0) return;
+    const results = await Promise.all(
+      live.map((o) => ordersApi.getById(o.order_id).catch(() => null)),
+    );
+    const byId = new Map(
+      results.filter((o): o is Order => Boolean(o?.order_id)).map((o) => [o.order_id, o]),
+    );
+    if (byId.size === 0) return;
+    setOrders((prev) => prev.map((o) => byId.get(o.order_id) ?? o));
+  }, []);
+
   useEffect(() => {
     void load(false);
-    const id = setInterval(() => void load(false), 15_000);
+    const id = setInterval(() => void refreshLive(), 15_000);
     return () => clearInterval(id);
-  }, [load]);
+  }, [load, refreshLive]);
 
   const handleIncludeExternalChange = (value: boolean) => {
     setIncludeExternal(value);
@@ -869,7 +901,13 @@ export function OrdersPageClient() {
                     ) : <span className="text-muted text-xs">—</span>}
                   </td>
                   <td className="px-3 py-2.5 border-b border-border">
-                    <ReportFilesCell orderId={o.order_id} status={o.status} />
+                    {isVcfOnlyWesOrder(o) ? (
+                      ['COMPLETED', 'REPORT_READY'].includes(o.status)
+                        ? <VcfDownloadButtons orderId={o.order_id} stopRowClick />
+                        : <span className="text-muted text-xs">—</span>
+                    ) : (
+                      <ReportFilesCell orderId={o.order_id} status={o.status} />
+                    )}
                   </td>
                   <td className="px-2 py-2.5 border-b border-border">
                     <ActionsMenu

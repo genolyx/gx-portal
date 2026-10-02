@@ -35,6 +35,11 @@ export const ordersApi = {
   deleteRun: (id: string) => api.post<Order>(`/orders/${enc(id)}/delete-run`),
   purgeDb: (id: string) => api.post<Order>(`/orders/${enc(id)}/purge-db`),
   getFiles: (id: string) => api.get<{ files: { name: string; size: number; mtime_ms: number; type: string }[] }>(`/orders/${enc(id)}/files`),
+  getVcfDownloads: (id: string) =>
+    api.get<{
+      vcf: { name: string; rel_path: string; size: number } | null;
+      annotated_vcf: { name: string; rel_path: string; size: number } | null;
+    }>(`/orders/${enc(id)}/vcf-downloads`),
   getOutputFileUrl: (id: string, filename: string) => `/api/orders/${enc(id)}/output/${encodeURIComponent(filename)}`,
   getLog: (id: string) => api.getText(`/orders/${enc(id)}/pipeline-log`),
   sendGxReport: (id: string) =>

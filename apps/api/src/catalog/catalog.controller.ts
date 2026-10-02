@@ -55,6 +55,30 @@ export class CatalogController {
     return this.catalogService.deletePanel(id);
   }
 
+  @Get('capture-panels')
+  @ApiOperation({ summary: 'List sequencing capture kits (Twist, Roche HyperExome, …)' })
+  getCapturePanels() {
+    return this.catalogService.listCapturePanels();
+  }
+
+  @Post('capture-panels')
+  @ApiOperation({ summary: 'Create or update a sequencing capture kit' })
+  saveCapturePanel(@Body() body: unknown) {
+    return this.catalogService.saveCapturePanel(body);
+  }
+
+  @Post('capture-panels/:id/default')
+  @ApiOperation({ summary: 'Mark a capture kit as the Create Order default' })
+  setDefaultCapturePanel(@Param('id') id: string) {
+    return this.catalogService.setDefaultCapturePanel(id);
+  }
+
+  @Delete('capture-panels/:id')
+  @ApiOperation({ summary: 'Delete a custom sequencing capture kit' })
+  deleteCapturePanel(@Param('id') id: string) {
+    return this.catalogService.deleteCapturePanel(id);
+  }
+
   @Get('browse/fastq')
   @ApiOperation({ summary: 'Browse FASTQ files on daemon server' })
   browseFastq(

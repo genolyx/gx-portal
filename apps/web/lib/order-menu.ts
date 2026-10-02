@@ -1,4 +1,4 @@
-import { gxPortalMeta, type Order } from '@gx-portal/types';
+import { gxPortalMeta, isVcfOnlyWesOrder, type Order } from '@gx-portal/types';
 
 export const PIPELINE_SERVICES = [
   'carrier_screening',
@@ -46,7 +46,7 @@ export function buildOrderMenuItems(order: Order): OrderMenuItem[] {
 
   items.push({ action: 'edit', label: 'Edit' });
 
-  if ((st === 'COMPLETED' || st === 'REPORT_READY') && pipeline) {
+  if ((st === 'COMPLETED' || st === 'REPORT_READY') && pipeline && !isVcfOnlyWesOrder(order)) {
     items.push({ action: 'review', label: 'Review' });
     items.push({
       action: 'new-from',

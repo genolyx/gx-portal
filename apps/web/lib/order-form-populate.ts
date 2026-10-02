@@ -1,4 +1,4 @@
-import type { Order } from '@gx-portal/types';
+import { FULL_WES_PANEL_ID, type Order } from '@gx-portal/types';
 
 type ServiceCode = 'carrier_screening' | 'whole_exome' | 'health_screening' | 'sgnipt';
 
@@ -32,6 +32,7 @@ export interface PopulatedOrderForm {
   inputBam: string;
   inputBamCsv: string;
   backboneBed: string;
+  captureBed: string;
   diseaseBed: string;
   maxAf: string;
   hpoTerms: string;
@@ -128,14 +129,23 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
     inputBam: str(p.input_bam),
     inputBamCsv: str(p.input_bam_csv),
     backboneBed: str(p.backbone_bed),
+    captureBed: str(p.capture_bed),
     diseaseBed: str(p.disease_bed),
     maxAf: p.max_af != null ? String(p.max_af) : '',
     hpoTerms: str(p.hpo_terms),
     geneFilter: str(p.gene_filter),
-    wesPanel: str(p.wes_panel_id || c.wes_panel_id),
+    wesPanel:
+      service === 'whole_exome' &&
+      (!str(p.wes_panel_id || c.wes_panel_id) || str(p.wes_panel_id || c.wes_panel_id) === FULL_WES_PANEL_ID)
+        ? FULL_WES_PANEL_ID
+        : str(p.wes_panel_id || c.wes_panel_id),
     capturePanel: str(c.capture_panel_id) || 'twist-exome2',
     includeApoePgx: bool(p.include_apoe_pgx),
-    panelFilterAfterAnalysis: bool(p.panel_filter_after_analysis, true),
+    panelFilterAfterAnalysis:
+      service === 'whole_exome' &&
+      (!str(p.wes_panel_id || c.wes_panel_id) || str(p.wes_panel_id || c.wes_panel_id) === FULL_WES_PANEL_ID)
+        ? false
+        : bool(p.panel_filter_after_analysis, true),
     interpretationGenesExtra: str(p.interpretation_genes_extra || c.interpretation_genes_extra),
     carrier,
     nipt,

@@ -232,6 +232,7 @@ export class ReviewController {
         'content-type',
         'content-length',
         'content-range',
+        'content-disposition',
         'accept-ranges',
         'cache-control',
         'pragma',

@@ -80,6 +80,15 @@ export interface VariantSetEntriesResponse {
   entry_count?: number;
 }
 
+export interface CapturePanel {
+  id: string;
+  label: string;
+  primary_bed?: string;
+  capture_bed?: string;
+  builtin?: boolean;
+  default?: boolean;
+}
+
 export const catalogApi = {
   // Variant Sets
   getVariantSets: () => api.get<VariantSetResponse>('/variant-sets'),
@@ -91,6 +100,17 @@ export const catalogApi = {
   getPanel: (id: string) => api.get<PanelPackage & { interpretation_genes?: string[] }>(`/panels/${encodeURIComponent(id)}`),
   savePanel: (body: unknown) => api.post<unknown>('/panels', body),
   deletePanel: (id: string) => api.delete(`/panels/${encodeURIComponent(id)}`),
+
+  getCapturePanels: () => api.get<{ panels: CapturePanel[] }>('/capture-panels'),
+  saveCapturePanel: (body: {
+    id: string;
+    label: string;
+    primary_bed?: string;
+    capture_bed?: string;
+  }) => api.post<CapturePanel>('/capture-panels', body),
+  deleteCapturePanel: (id: string) => api.delete(`/capture-panels/${encodeURIComponent(id)}`),
+  setDefaultCapturePanel: (id: string) =>
+    api.post<{ panels: CapturePanel[] }>(`/capture-panels/${encodeURIComponent(id)}/default`, {}),
 
   // Literature
   getStats: () => api.get<LiteratureStats>('/literature/stats'),

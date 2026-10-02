@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Input, Label, Modal, ToggleButton, ToggleButtonGroup, type Key } from '@heroui/react';
 import { LabeledCheckbox } from '../../ui/LabeledCheckbox';
 import { ordersApi } from '../../../lib/api/orders';
-import { catalogApi, type PanelPackage } from '../../../lib/api/catalog';
+import { catalogApi, type CapturePanel, type PanelPackage } from '../../../lib/api/catalog';
 import { populateOrderForm, resolveOrderServiceCode } from '../../../lib/order-form-populate';
 import { canEditOrderService } from '../../../lib/order-menu';
 import { cn } from '../../../lib/utils';
@@ -14,6 +14,8 @@ import { FileBrowseModal } from './FileBrowseModal';
 import { downloadGxOrderSchemaJson } from '../../../lib/download-gx-schema';
 import { portalTodayIso } from '../../../lib/datetime';
 import {
+  FULL_WES_PANEL_ID,
+  FULL_WES_PANEL_LABEL,
   PORTAL_SERVICE_OPTIONS,
   type Order,
   type PortalServiceCode,
@@ -46,8 +48,9 @@ const NIPT_REPORT_TYPES = [
 ];
 const SPECIMEN_TYPES  = ['Blood', 'Saliva', 'Swab', 'Cord Blood', 'Other'];
 const NIPT_SPECIMEN_TYPES = ['Blood', 'Plasma', 'Other'];
-// Sequencing capture panel — hardcoded in original portal (not API-driven)
-const CAPTURE_PANELS  = [{ value: 'twist-exome2', label: 'Twist Exome 2.0' }];
+const DEFAULT_CAPTURE_PANEL = 'twist-exome2';
+/** Catalog id for the Carrier_302 interpretation package. */
+const DEFAULT_WHOLE_EXOME_INTERPRETATION_ID = 'invitae_302';
 const PREGNANCY_TYPES = ['Singleton', 'Twin'];
 const NIPT_PREGNANCY_TYPES = ['Singleton', 'Twin', 'Multiple'];
 const MEAS_METHODS    = ['LMP', 'CRL'];
@@ -251,9 +254,11 @@ function DateInp({ value, onChange }: { value: string; onChange: (v: string) => 
   return <DatePickerField value={value} onChange={onChange} />;
 }
 
-function Chk({ value, onChange, label }: { value: boolean; onChange: (v: boolean) => void; label: string }) {
+function Chk({ value, onChange, label, isDisabled }: {
+  value: boolean; onChange: (v: boolean) => void; label: string; isDisabled?: boolean;
+}) {
   return (
-    <LabeledCheckbox isSelected={value} onChange={onChange}>
+    <LabeledCheckbox isSelected={value} onChange={onChange} isDisabled={isDisabled}>
       {label}
     </LabeledCheckbox>
   );
@@ -306,6 +311,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
   // Advanced pipeline overrides
   const [backboneBed, setBackboneBed] = useState('');
+  const [captureBed,  setCaptureBed]  = useState('');
   const [diseaseBed,  setDiseaseBed]  = useState('');
   const [maxAf,       setMaxAf]       = useState('');
   const [hpoTerms,    setHpoTerms]    = useState('');
@@ -316,7 +322,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
   // Exome / Carrier / Health top-level params
   const [wesPanel,                  setWesPanel]                  = useState('');
-  const [capturePanel,              setCapturePanel]              = useState('twist-exome2');
+  const [capturePanel,              setCapturePanel]              = useState(DEFAULT_CAPTURE_PANEL);
+  const [captureKits,               setCaptureKits]               = useState<CapturePanel[]>([]);
   const [includeApoePgx,            setIncludeApoePgx]            = useState(false);
   const [panelFilterAfterAnalysis,  setPanelFilterAfterAnalysis]  = useState(true);
   const [interpretationGenesExtra,  setInterpretationGenesExtra]  = useState('');
@@ -345,6 +352,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
     setInputBam(populated.inputBam);
     setInputBamCsv(populated.inputBamCsv);
     setBackboneBed(populated.backboneBed);
+    setCaptureBed(populated.captureBed);
     setDiseaseBed(populated.diseaseBed);
     setMaxAf(populated.maxAf);
     setHpoTerms(populated.hpoTerms);
@@ -359,21 +367,54 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   }, [initial]);
 
   useEffect(() => {
+    catalogApi.getCapturePanels().then((r) => {
+      const panels = r.panels ?? [];
+      setCaptureKits(panels);
+      if (initial) return;
+      const preferred = panels.find((p) => p.default)
+        ?? panels.find((p) => p.id === DEFAULT_CAPTURE_PANEL)
+        ?? panels[0];
+      if (!preferred) return;
+      setCapturePanel(preferred.id);
+      setCarrier((c) => ({ ...c, capture_panel_id: preferred.id }));
+      setBackboneBed(preferred.primary_bed ?? '');
+      setCaptureBed(preferred.capture_bed ?? '');
+    }).catch(() => {});
+  }, [initial]);
+
+  useEffect(() => {
     catalogApi.getPanels().then((r) => {
       const all = r.panels ?? [];
       setPanels(all);
       // Default to first exome-compatible panel
       const exomePanels = all.filter((p) => !p.category || ['carrier_screening','whole_exome','health_screening','proactive_health'].includes(p.category));
-      if (exomePanels.length > 0 && !wesPanel) setWesPanel(exomePanels[0].id);
+      if (exomePanels.length > 0) {
+        setWesPanel((cur) => cur || exomePanels[0].id);
+      }
     }).catch(() => {});
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   // When service changes, reset relevant defaults (create flow only)
   useEffect(() => {
     if (initial) return;
-    if (service === 'sgnipt') setNipt(initNiptSub());
-    else setCarrier(initCarrierSub(service));
-  }, [service, initial]);
+    if (service === 'sgnipt') {
+      setNipt(initNiptSub());
+      return;
+    }
+    setCarrier(initCarrierSub(service));
+    if (service === 'whole_exome') {
+      setWesPanel(DEFAULT_WHOLE_EXOME_INTERPRETATION_ID);
+      setPanelFilterAfterAnalysis(true);
+      return;
+    }
+    if (wesPanel === FULL_WES_PANEL_ID) {
+      const first = panels.find((p) =>
+        !p.category || ['carrier_screening', 'whole_exome', 'health_screening', 'proactive_health'].includes(p.category),
+      );
+      setWesPanel(first?.id ?? '');
+      setPanelFilterAfterAnalysis(true);
+    }
+  }, [service, initial]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Group panels by category for optgroup display
   const CATEGORY_LABELS: Record<string, string> = {
@@ -382,6 +423,14 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
     pgx:               'Pharmacogenomics (PGx)',
     other:             'Other',
   };
+  const fullWesSelected = service === 'whole_exome' && wesPanel === FULL_WES_PANEL_ID;
+  const captureOptions = (captureKits.length
+    ? captureKits
+    : [{ id: DEFAULT_CAPTURE_PANEL, label: 'Twist Exome 2.0' }]
+  ).map((k) => ({ value: k.id, label: k.label }));
+  if (capturePanel && !captureOptions.some((o) => o.value === capturePanel)) {
+    captureOptions.unshift({ value: capturePanel, label: capturePanel });
+  }
   const panelsByCategory = panels.reduce<Record<string, PanelPackage[]>>((acc, p) => {
     const cat = p.category ?? 'other';
     if (!acc[cat]) acc[cat] = [];
@@ -414,12 +463,13 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
           wes_panel_id:                wesPanel,
           input_bam:                   inputBam.trim() || undefined,
           input_bam_csv:               inputBamCsv.trim() || undefined,
-          backbone_bed:                backboneBed.trim() || undefined,
+          backbone_bed:                backboneBed.trim() || captureKits.find((k) => k.id === capturePanel)?.primary_bed || undefined,
+          capture_bed:                 captureBed.trim() || captureKits.find((k) => k.id === capturePanel)?.capture_bed || undefined,
           disease_bed:                 diseaseBed.trim() || undefined,
           max_af:                      maxAf.trim() ? parseFloat(maxAf) : undefined,
           hpo_terms:                   hpoTerms.trim() || undefined,
           gene_filter:                 geneFilter.trim() || undefined,
-          panel_filter_after_analysis: panelFilterAfterAnalysis,
+          panel_filter_after_analysis: wesPanel === FULL_WES_PANEL_ID ? false : panelFilterAfterAnalysis,
           include_apoe_pgx:            includeApoePgx,
           interpretation_genes_extra:  interpretationGenesExtra.trim() || undefined,
           carrier:                     carrierSub,
@@ -543,20 +593,37 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
               {/* ── Pipeline (exome only) ── */}
               {isExome && (
-                <Sec title="Pipeline Options">
+                <Sec title="Pipeline Options"
+                  desc={service === 'whole_exome'
+                    ? 'Whole Exome (vcf only) keeps the annotated exome. A gene panel below narrows the clinical report.'
+                    : undefined}>
                   <Field label="Primary (interpretation)" required>
                     <SelectField
                       value={wesPanel}
-                      onChange={(v) => { setWesPanel(v); setC('wes_panel_id', v); }}
+                      onChange={(v) => {
+                        setWesPanel(v);
+                        setC('wes_panel_id', v);
+                        if (v === FULL_WES_PANEL_ID) setPanelFilterAfterAnalysis(false);
+                        else if (wesPanel === FULL_WES_PANEL_ID) setPanelFilterAfterAnalysis(true);
+                      }}
                       placeholder="— Select interpretation panel (required) —"
-                      groups={Object.entries(panelsByCategory).map(([cat, ps]) => ({
-                        id: cat,
-                        label: CATEGORY_LABELS[cat] ?? cat,
-                        options: ps.map((p) => ({
-                          id: p.id,
-                          label: `${p.label ?? p.id}${p.gene_count ? ` (~${p.gene_count} genes)` : ''}`,
+                      groups={[
+                        ...Object.entries(panelsByCategory).map(([cat, ps]) => ({
+                          id: cat,
+                          label: CATEGORY_LABELS[cat] ?? cat,
+                          options: ps.map((p) => ({
+                            id: p.id,
+                            label: `${p.label ?? p.id}${p.gene_count ? ` (~${p.gene_count} genes)` : ''}`,
+                          })),
                         })),
-                      }))}
+                        ...(service === 'whole_exome'
+                          ? [{
+                              id: 'full_wes',
+                              label: 'Whole exome',
+                              options: [{ id: FULL_WES_PANEL_ID, label: FULL_WES_PANEL_LABEL }],
+                            }]
+                          : []),
+                      ]}
                     />
                   </Field>
                   <Field label="Extra interpretation genes" wide>
@@ -569,7 +636,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                       {service === 'health_screening' && (
                         <Chk value={includeApoePgx} onChange={setIncludeApoePgx} label="Include APOE PGx" />
                       )}
-                      <Chk value={panelFilterAfterAnalysis} onChange={setPanelFilterAfterAnalysis} label="Panel filter after analysis" />
+                      <Chk value={panelFilterAfterAnalysis} onChange={setPanelFilterAfterAnalysis}
+                        isDisabled={fullWesSelected} label="Panel filter after analysis" />
                       <Chk value={carrier.reuse_prior_pipeline_outputs}
                         onChange={(v) => setC('reuse_prior_pipeline_outputs', v)} label="Reuse prior pipeline outputs" />
                     </div>
@@ -807,10 +875,24 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               {/* ── Capture Panel (carrier flow only) ── */}
               {isExome && (
                 <Sec title="Capture Panel"
-                  desc="Sequencing capture panel passed to run_analysis.sh --panel. Determines the target BED used for alignment and variant calling.">
+                  desc="Sequencing kit, registered under Panels → Capture panel. Twist Exome 2.0 uses its targets.bed. Roche HyperExome uses the Primary BED saved with that kit. Capture BED is optional and used only for QC. Paths below override the kit for this order.">
                   <Field label="Capture panel">
-                    <Sel value={capturePanel} onChange={(v) => { setCapturePanel(v); setC('capture_panel_id', v); }}
-                      options={CAPTURE_PANELS} />
+                    <Sel value={capturePanel} onChange={(v) => {
+                      setCapturePanel(v);
+                      setC('capture_panel_id', v);
+                      const kit = captureKits.find((k) => k.id === v);
+                      setBackboneBed(kit?.primary_bed ?? '');
+                      setCaptureBed(kit?.capture_bed ?? '');
+                    }}
+                      options={captureOptions} />
+                  </Field>
+                  <Field label="Primary BED (targets)" wide>
+                    <Inp value={backboneBed} onChange={setBackboneBed}
+                      placeholder="e.g. /data/bed/roche-hyperexome-v1/primary.bed" />
+                  </Field>
+                  <Field label="Capture BED (QC only, optional)" wide>
+                    <Inp value={captureBed} onChange={setCaptureBed}
+                      placeholder="e.g. /data/bed/roche-hyperexome-v1/capture.bed" />
                   </Field>
                 </Sec>
               )}
@@ -819,9 +901,6 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               {isExome && (
                 <Sec title="Advanced pipeline overrides"
                   desc="Optional paths and filters for the analysis pipeline. Leave blank to use server defaults and the panel selected above.">
-                  <Field label="Backbone BED">
-                    <Inp value={backboneBed} onChange={setBackboneBed} placeholder="Path to backbone.bed" />
-                  </Field>
                   <Field label="Disease BED">
                     <Inp value={diseaseBed} onChange={setDiseaseBed} placeholder="Path to disease.bed" />
                   </Field>

@@ -12,7 +12,7 @@ import {
   TextArea,
 } from '@heroui/react';
 import { Pencil, Trash2 } from 'lucide-react';
-import { catalogApi, type PanelPackage } from '../../lib/api/catalog';
+import { catalogApi, type CapturePanel, type PanelPackage } from '../../lib/api/catalog';
 import { LabeledCheckbox } from '../ui/LabeledCheckbox';
 import { PageHeader } from '../ui/PageHeader';
 import { RefreshButton } from '../ui/RefreshButton';
@@ -33,12 +33,23 @@ const emptyForm = () => ({
   interpretationGenesOnly: true,
 });
 
+const emptyCaptureForm = () => ({
+  id: '',
+  label: '',
+  primaryBed: '',
+  captureBed: '',
+});
+
 export function PanelsPageClient() {
   const [panels, setPanels] = useState<PanelPackage[]>([]);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState('');
   const [form, setForm] = useState(emptyForm());
+  const [captureKits, setCaptureKits] = useState<CapturePanel[]>([]);
+  const [captureForm, setCaptureForm] = useState(emptyCaptureForm());
+  const [captureSaving, setCaptureSaving] = useState(false);
+  const [captureMsg, setCaptureMsg] = useState('');
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [geneCache, setGeneCache] = useState<Record<string, string[]>>({});
@@ -57,9 +68,84 @@ export function PanelsPageClient() {
     }
   }, []);
 
+  const loadCaptureKits = useCallback(async () => {
+    try {
+      const res = await catalogApi.getCapturePanels();
+      setCaptureKits(res.panels ?? []);
+    } catch {
+      setCaptureKits([]);
+    }
+  }, []);
+
   useEffect(() => {
     void load(false);
-  }, [load]);
+    void loadCaptureKits();
+  }, [load, loadCaptureKits]);
+
+  const saveCaptureKit = async () => {
+    const id = captureForm.id.trim();
+    const label = captureForm.label.trim();
+    if (!id || !label) {
+      setCaptureMsg('Panel ID and display name are required.');
+      return;
+    }
+    if (!/^[a-z][a-z0-9_-]{1,63}$/.test(id)) {
+      setCaptureMsg('Panel ID: start with a letter; lowercase letters, digits, _ or - only.');
+      return;
+    }
+    if (id !== 'twist-exome2' && !captureForm.primaryBed.trim()) {
+      setCaptureMsg('Primary BED is required for a new capture panel.');
+      return;
+    }
+    setCaptureSaving(true);
+    setCaptureMsg('');
+    try {
+      await catalogApi.saveCapturePanel({
+        id,
+        label,
+        primary_bed: captureForm.primaryBed.trim() || undefined,
+        capture_bed: captureForm.captureBed.trim() || undefined,
+      });
+      setCaptureMsg('✓ Capture panel saved');
+      setCaptureForm(emptyCaptureForm());
+      await loadCaptureKits();
+    } catch (err) {
+      setCaptureMsg(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setCaptureSaving(false);
+    }
+  };
+
+  const editCaptureKit = (kit: CapturePanel) => {
+    setCaptureForm({
+      id: kit.id,
+      label: kit.label,
+      primaryBed: kit.primary_bed ?? '',
+      captureBed: kit.capture_bed ?? '',
+    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
+  };
+
+  const setDefaultCaptureKit = async (id: string) => {
+    setCaptureMsg('');
+    try {
+      const res = await catalogApi.setDefaultCapturePanel(id);
+      setCaptureKits(res.panels ?? []);
+      setCaptureMsg('✓ Default capture panel updated');
+    } catch (err) {
+      setCaptureMsg(err instanceof Error ? err.message : 'Could not set default');
+    }
+  };
+
+  const deleteCaptureKit = async (id: string) => {
+    if (!confirm(`Delete capture panel "${id}"?`)) return;
+    try {
+      await catalogApi.deleteCapturePanel(id);
+      await loadCaptureKits();
+    } catch (err) {
+      alert(err instanceof Error ? err.message : 'Delete failed');
+    }
+  };
 
   const handleToggleGenes = async (id: string) => {
     if (expanded === id) {
@@ -160,12 +246,122 @@ export function PanelsPageClient() {
     <div>
       <PageHeader
         title="Panels"
-        description="WES / exome panel packages — named gene lists for carrier order interpretation."
+        description="Capture panel is the sequencing kit (Twist Exome 2.0, Roche HyperExome). Interpretation package is the gene list used for the report."
       />
 
       <Card className="mb-5">
         <Card.Header>
-          <Card.Title>New or update package</Card.Title>
+          <Card.Title>Capture panel</Card.Title>
+          <Card.Description>
+            Sequencing kit for the order. Primary BED is the calling target. Capture BED is optional and used only for QC.
+          </Card.Description>
+        </Card.Header>
+        <Card.Content className="flex flex-col gap-4">
+          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Panel ID *</Label>
+              <Input
+                value={captureForm.id}
+                onChange={(e) => setCaptureForm({ ...captureForm, id: e.target.value })}
+                placeholder="e.g. roche-hyperexome-v1"
+                fullWidth
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Display name *</Label>
+              <Input
+                value={captureForm.label}
+                onChange={(e) => setCaptureForm({ ...captureForm, label: e.target.value })}
+                placeholder="e.g. Roche HyperExome v1"
+                fullWidth
+              />
+            </div>
+            <div className="col-span-full flex flex-col gap-1.5">
+              <Label>Primary BED *</Label>
+              <Input
+                value={captureForm.primaryBed}
+                onChange={(e) => setCaptureForm({ ...captureForm, primaryBed: e.target.value })}
+                placeholder="Host path to primary.bed / targets.bed"
+                fullWidth
+              />
+            </div>
+            <div className="col-span-full flex flex-col gap-1.5">
+              <Label>Capture BED (QC only, optional)</Label>
+              <Input
+                value={captureForm.captureBed}
+                onChange={(e) => setCaptureForm({ ...captureForm, captureBed: e.target.value })}
+                placeholder="Host path to capture.bed"
+                fullWidth
+              />
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="primary" isDisabled={captureSaving} onPress={() => void saveCaptureKit()}>
+              {captureSaving ? 'Saving…' : 'Save capture panel'}
+            </Button>
+            <Button size="sm" variant="ghost" onPress={() => setCaptureForm(emptyCaptureForm())}>
+              Reset
+            </Button>
+            {captureMsg && (
+              <span className={captureMsg.startsWith('✓') ? 'text-sm text-success' : 'text-sm text-danger'}>
+                {captureMsg}
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-secondary text-left text-muted">
+                <tr>
+                  <th className="p-2">Name</th>
+                  <th className="p-2">Default</th>
+                  <th className="p-2">ID</th>
+                  <th className="p-2">Primary BED</th>
+                  <th className="p-2">Capture BED</th>
+                  <th className="p-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {captureKits.map((kit) => (
+                  <tr key={kit.id} className="border-t border-border">
+                    <td className="p-2 font-medium">{kit.label}</td>
+                    <td className="p-2">
+                      {kit.default ? (
+                        <Chip size="sm" variant="soft" color="accent">
+                          <Chip.Label>Default</Chip.Label>
+                        </Chip>
+                      ) : (
+                        <Button size="sm" variant="ghost" onPress={() => void setDefaultCaptureKit(kit.id)}>
+                          Set default
+                        </Button>
+                      )}
+                    </td>
+                    <td className="p-2 font-mono text-muted">{kit.id}</td>
+                    <td className="p-2 font-mono text-xs">{kit.primary_bed || '—'}</td>
+                    <td className="p-2 font-mono text-xs">{kit.capture_bed || '—'}</td>
+                    <td className="p-2">
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" isIconOnly aria-label={`Edit ${kit.label}`} onPress={() => editCaptureKit(kit)}>
+                          <Pencil size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                        <Button size="sm" variant="danger" isIconOnly aria-label={`Delete ${kit.label}`} onPress={() => void deleteCaptureKit(kit.id)}>
+                          <Trash2 size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </Card.Content>
+      </Card>
+
+      <Card className="mb-5">
+        <Card.Header>
+          <Card.Title>Interpretation package</Card.Title>
+          <Card.Description>
+            Gene list for the report. This is not the sequencing kit.
+          </Card.Description>
         </Card.Header>
         <Card.Content className="flex flex-col gap-4">
           <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
