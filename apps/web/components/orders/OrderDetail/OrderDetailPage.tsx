@@ -551,7 +551,16 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
         variant="ghost"
         size="sm"
         isDisabled={busy}
-        onPress={() => run('Delete', () => ordersApi.deleteRun(order.order_id))}
+        onPress={() => {
+          if (!confirm('"Delete" 실행하시겠습니까?')) return;
+          setBusy(true);
+          void ordersApi.deleteRun(order.order_id)
+            .then(() => router.push('/orders'))
+            .catch((e: unknown) => {
+              alert(e instanceof Error ? e.message : String(e));
+              setBusy(false);
+            });
+        }}
         className="gap-1.5"
       >
         <Trash2 size={14} strokeWidth={2} aria-hidden />

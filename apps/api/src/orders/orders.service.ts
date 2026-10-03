@@ -58,7 +58,13 @@ export class OrdersService {
       return await fn(canonicalId);
     } catch (err) {
       if (legacyId && legacyId !== canonicalId && this.isNotFound(err)) {
-        return await fn(legacyId);
+        try {
+          return await fn(legacyId);
+        } catch (legacyErr) {
+          // Both ids are gone. Report the id the caller asked for, not the legacy alias.
+          if (this.isNotFound(legacyErr)) throw err;
+          throw legacyErr;
+        }
       }
       throw err;
     }
@@ -172,6 +178,7 @@ export class OrdersService {
     const order = await this.withDaemonOrderId(id, user, (daemonId) =>
       this.daemon.post<Order>(this.orderPath(daemonId, '/delete-run')),
     );
+    this.registry.forgetOrder(id);
     return this.registry.enrichOrder(order);
   }
 
@@ -179,6 +186,7 @@ export class OrdersService {
     const order = await this.withDaemonOrderId(id, user, (daemonId) =>
       this.daemon.post<Order>(this.orderPath(daemonId, '/purge-db')),
     );
+    this.registry.forgetOrder(id);
     return this.registry.enrichOrder(order);
   }
 

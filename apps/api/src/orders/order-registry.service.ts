@@ -221,6 +221,12 @@ export class OrderRegistryService implements OnApplicationBootstrap {
     return this.getMeta(opts.orderId)!;
   }
 
+  /** Drop the portal row after the daemon order itself has been removed. */
+  forgetOrder(orderId: string): void {
+    const canonical = this.resolveCanonicalOrderId(orderId);
+    this.db.db.prepare('DELETE FROM portal_orders WHERE order_id = ?').run(canonical);
+  }
+
   workDirFromOrderId(orderId: string): string | undefined {
     const m = orderId.match(/(\d{4})\d{4}$/);
     return m?.[1];
