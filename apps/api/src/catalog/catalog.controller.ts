@@ -1,8 +1,11 @@
 import {
   Controller, Get, Post, Delete, Body, Param, Query, NotFoundException,
+  UseGuards, Req, Res, HttpException,
 } from '@nestjs/common';
+import type { Request, Response } from 'express';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
 import { CatalogService } from './catalog.service';
+import { JwtAuthGuard } from '../auth/guards/jwt-auth.guard';
 
 @ApiTags('catalog')
 @Controller()
@@ -77,6 +80,25 @@ export class CatalogController {
   @ApiOperation({ summary: 'Delete a custom sequencing capture kit' })
   deleteCapturePanel(@Param('id') id: string) {
     return this.catalogService.deleteCapturePanel(id);
+  }
+
+  @Post('browse/fastq/upload')
+  @UseGuards(JwtAuthGuard)
+  @ApiOperation({ summary: 'Upload a FASTQ from the user computer into the service FASTQ directory' })
+  async uploadFastq(
+    @Query('service_code') serviceCode: string,
+    @Query('filename') filename: string,
+    @Req() req: Request,
+    @Res() res: Response,
+  ) {
+    if (!serviceCode?.trim() || !filename?.trim()) {
+      throw new HttpException('service_code and filename are required', 400);
+    }
+    const upstream = await this.catalogService.pipeFastqUpload(serviceCode.trim(), filename.trim(), req);
+    const text = await upstream.text();
+    res.status(upstream.status);
+    res.setHeader('Content-Type', upstream.headers.get('content-type') ?? 'application/json');
+    res.send(text);
   }
 
   @Get('browse/fastq')

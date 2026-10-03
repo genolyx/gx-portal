@@ -123,6 +123,37 @@ export class DaemonService {
   }
 
   /**
+   * Stream an incoming request body to the daemon without buffering the file.
+   * Used for multi-gigabyte FASTQ uploads.
+   */
+  async pipeBody(
+    path: string,
+    incoming: import('http').IncomingMessage,
+    contentType = 'application/octet-stream',
+  ): Promise<Response> {
+    const url = `${this._baseUrl}${path}`;
+    const headers: Record<string, string> = { 'Content-Type': contentType };
+    if (this._apiKey) headers['X-API-Key'] = this._apiKey;
+    const length = incoming.headers['content-length'];
+    if (typeof length === 'string' && length) headers['Content-Length'] = length;
+
+    const { Readable } = await import('stream');
+    const body = Readable.toWeb(incoming) as ReadableStream;
+
+    try {
+      return await fetch(url, {
+        method: 'POST',
+        headers,
+        body,
+        duplex: 'half',
+      } as RequestInit);
+    } catch (err) {
+      this.logger.error(`Daemon unreachable: ${(err as Error).message}`);
+      throw new HttpException('gx-daemon unreachable', HttpStatus.BAD_GATEWAY);
+    }
+  }
+
+  /**
    * Stream a daemon response (supports Range / HEAD for IGV BAM).
    * Caller is responsible for piping `response.body` to the client.
    */

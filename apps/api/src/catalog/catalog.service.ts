@@ -196,6 +196,14 @@ export class CatalogService {
     return this.daemon.get<unknown>('/api/fastq/browse', { path, service_code: serviceCode });
   }
 
+  pipeFastqUpload(serviceCode: string, filename: string, incoming: import('http').IncomingMessage) {
+    const qs = new URLSearchParams({
+      service_code: serviceCode,
+      filename,
+    });
+    return this.daemon.pipeBody(`/api/fastq/upload?${qs.toString()}`, incoming);
+  }
+
   browseBamCsv(query: Record<string, string | undefined>) {
     return this.daemon.get<unknown>('/api/portal/bam-csv/browse', query);
   }

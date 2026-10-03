@@ -37,6 +37,9 @@ async function bootstrap() {
   SwaggerModule.setup('docs', app, document);
 
   const port = process.env.PORT ?? 4000;
+  const server = app.getHttpServer() as import('http').Server;
+  // FASTQ uploads can run for hours. 0 disables Node's 5-minute request timeout.
+  server.requestTimeout = 0;
   await app.listen(port);
   console.log(`Gx-Portal API running on http://localhost:${port}`);
 }

@@ -11,6 +11,7 @@ import { cn } from '../../../lib/utils';
 import { DatePickerField } from '../../ui/DatePickerField';
 import { SelectField } from '../../ui/SelectField';
 import { FileBrowseModal } from './FileBrowseModal';
+import { FastqComputerUpload } from './FastqComputerUpload';
 import { downloadGxOrderSchemaJson } from '../../../lib/download-gx-schema';
 import { portalTodayIso } from '../../../lib/datetime';
 import {
@@ -829,13 +830,25 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
               )}
 
               {/* ── FASTQ ── */}
-              <Sec title="FASTQ (server local paths)"
-                desc={isExome
-                  ? 'Use Browse FASTQ (R1+R2)… on the daemon server to pick two files (R1 + R2). Paths are editable below. Roots depend on service (SGNIPT_FASTQ_DIR / CARRIER_SCREENING_FASTQ_DIR in daemon .env).'
-                  : 'Use Browse FASTQ (R1+R2)… on the daemon server to pick two files (Ctrl+click up to two, or click one then Shift+click another if only those two lie in range). Paths still editable below. Roots: Single-gene NIPT / Carrier Screening (see SGNIPT_FASTQ_DIR / CARRIER_SCREENING_FASTQ_DIR in daemon .env).'}>
-                <div className="col-span-full">
+              <Sec title="FASTQ"
+                desc="Upload R1 and R2 from this computer, or browse files already on the server. Uploaded files are stored under the service FASTQ directory (uploads/YYMM) and the paths below are filled in.">
+                <div className="col-span-full flex flex-wrap gap-3 items-start">
+                  <FastqComputerUpload
+                    serviceCode={service}
+                    onUploaded={(paths) => {
+                      if (paths.length >= 2) {
+                        const [r1, r2] = assignFastqPair(paths);
+                        setFastqR1(r1);
+                        setFastqR2(r2);
+                        return;
+                      }
+                      const only = paths[0] ?? '';
+                      if (/[_\.-]R2/i.test(only)) setFastqR2(only);
+                      else setFastqR1(only);
+                    }}
+                  />
                   <Button size="sm" variant="ghost" onPress={() => setBrowse('fastq')}>
-                    Browse FASTQ (R1+R2)…
+                    Browse server storage…
                   </Button>
                 </div>
                 <Field label="R1 FASTQ">
