@@ -66,6 +66,16 @@ const EMPTY_FILTER: FilterState = {
   text: '', dateFrom: '', dateTo: '', service: '', status: '', deepSearch: false,
 };
 
+const PAGE_SIZES = [50, 100, 500] as const;
+type PageSize = (typeof PAGE_SIZES)[number];
+const PAGE_SIZE_KEY = 'gx-portal.orders.pageSize';
+
+function readPageSize(): PageSize {
+  if (typeof window === 'undefined') return 50;
+  const raw = Number(localStorage.getItem(PAGE_SIZE_KEY));
+  return (PAGE_SIZES as readonly number[]).includes(raw) ? (raw as PageSize) : 50;
+}
+
 // ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUSES = ['', 'SAVED', 'QUEUED', 'RUNNING', 'COMPLETED', 'REPORT_READY', 'FAILED', 'CANCELLED'];
@@ -662,6 +672,71 @@ function ActionsMenu({
   );
 }
 
+function pageWindow(page: number, pageCount: number): number[] {
+  if (pageCount <= 7) return Array.from({ length: pageCount }, (_, i) => i + 1);
+  const start = Math.max(1, Math.min(page - 2, pageCount - 4));
+  return Array.from({ length: 5 }, (_, i) => start + i);
+}
+
+function OrderPager({
+  page, pageCount, pageSize, total, onPage, onPageSize,
+}: {
+  page: number;
+  pageCount: number;
+  pageSize: PageSize;
+  total: number;
+  onPage: (page: number) => void;
+  onPageSize: (size: PageSize) => void;
+}) {
+  const from = total === 0 ? 0 : (page - 1) * pageSize + 1;
+  const to = Math.min(total, page * pageSize);
+  const pages = pageWindow(page, pageCount);
+
+  return (
+    <div className="flex flex-wrap items-center justify-between gap-3">
+      <div className="flex items-center gap-2">
+        <span className="text-xs text-muted whitespace-nowrap">Rows per page</span>
+        <SelectField
+          aria-label="Rows per page"
+          value={String(pageSize)}
+          onChange={(value) => {
+            const next = Number(value);
+            if ((PAGE_SIZES as readonly number[]).includes(next)) onPageSize(next as PageSize);
+          }}
+          fullWidth={false}
+          className="w-24"
+          options={PAGE_SIZES.map((n) => ({ id: String(n), label: String(n) }))}
+        />
+      </div>
+      <span className="text-xs text-muted tabular-nums">
+        {from}–{to} of {total}
+      </span>
+      <div className="flex items-center gap-1">
+        <Button size="sm" variant="ghost" isDisabled={page <= 1} onPress={() => onPage(page - 1)}>
+          Previous
+        </Button>
+        {pages[0] > 1 && <span className="px-1 text-xs text-muted">…</span>}
+        {pages.map((n) => (
+          <Button
+            key={n}
+            size="sm"
+            variant={n === page ? 'primary' : 'ghost'}
+            onPress={() => onPage(n)}
+            aria-label={`Page ${n}`}
+            aria-current={n === page ? 'page' : undefined}
+          >
+            {n}
+          </Button>
+        ))}
+        {pages[pages.length - 1] < pageCount && <span className="px-1 text-xs text-muted">…</span>}
+        <Button size="sm" variant="ghost" isDisabled={page >= pageCount} onPress={() => onPage(page + 1)}>
+          Next
+        </Button>
+      </div>
+    </div>
+  );
+}
+
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 export function OrdersPageClient() {
@@ -670,6 +745,8 @@ export function OrdersPageClient() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [sort, setSort]       = useState<SortState>({ key: 'created_at', dir: 'desc' });
+  const [page, setPage]       = useState(1);
+  const [pageSize, setPageSize] = useState<PageSize>(50);
   const [showCreate, setShowCreate] = useState(false);
   const [orderForm, setOrderForm] = useState<null | { mode: 'edit' | 'followUp'; order: Order }>(null);
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -686,6 +763,7 @@ export function OrdersPageClient() {
 
   useEffect(() => {
     authApi.me().then(setUser).catch(() => setUser(null));
+    setPageSize(readPageSize());
   }, []);
 
   const load = useCallback(async (manual = false) => {
@@ -739,12 +817,24 @@ export function OrdersPageClient() {
       setPending(clearExternalFilter);
       setActive(clearExternalFilter);
     }
+    setPage(1);
   };
 
-  const applyFilters = () => setActive({ ...pending });
+  const applyFilters = () => {
+    setActive({ ...pending });
+    setPage(1);
+  };
 
-  const handleSort = (key: SortKey) =>
+  const handleSort = (key: SortKey) => {
     setSort(prev => ({ key, dir: prev.key === key && prev.dir === 'asc' ? 'desc' : 'asc' }));
+    setPage(1);
+  };
+
+  const changePageSize = (next: PageSize) => {
+    setPageSize(next);
+    setPage(1);
+    try { localStorage.setItem(PAGE_SIZE_KEY, String(next)); } catch { /* ignore */ }
+  };
 
   const serviceOptions = useMemo(() => {
     if (!includeExternal) return PORTAL_SERVICES;
@@ -761,6 +851,10 @@ export function OrdersPageClient() {
 
   const filtered = orders.filter(o => matchesFilter(o, active));
   const sorted   = sortOrders(filtered, sort);
+  const pageCount = Math.max(1, Math.ceil(sorted.length / pageSize));
+  const currentPage = Math.min(page, pageCount);
+  const pageStart = (currentPage - 1) * pageSize;
+  const pageRows = sorted.slice(pageStart, pageStart + pageSize);
 
   return (
     <div>
@@ -823,7 +917,16 @@ export function OrdersPageClient() {
       ) : sorted.length === 0 ? (
         <p className="text-center text-muted py-10">No orders match the current filters.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-border">
+        <>
+        <OrderPager
+          page={currentPage}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          total={sorted.length}
+          onPage={setPage}
+          onPageSize={changePageSize}
+        />
+        <div className="overflow-x-auto rounded-lg border border-border mt-3">
           <table className="w-full text-sm border-collapse">
             <thead className="bg-surface-secondary/60">
               <tr>
@@ -842,7 +945,7 @@ export function OrdersPageClient() {
               </tr>
             </thead>
             <tbody>
-              {sorted.map((o, idx) => (
+              {pageRows.map((o, idx) => (
                 <tr
                   key={o.order_id}
                   className={cn(
@@ -922,6 +1025,15 @@ export function OrdersPageClient() {
             </tbody>
           </table>
         </div>
+        <OrderPager
+          page={currentPage}
+          pageCount={pageCount}
+          pageSize={pageSize}
+          total={sorted.length}
+          onPage={setPage}
+          onPageSize={changePageSize}
+        />
+        </>
       )}
     </div>
   );
