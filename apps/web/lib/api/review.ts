@@ -1,6 +1,6 @@
 import { api, API_BASE } from './client';
 import type {
-  ReviewData, ClassifyRequest, ClassifyResponse,
+  ReviewData, ClassifyRequest, ClassifyResponse, GvcEvidence,
   CoverageContext, GeneKnowledgeResponse,
   GeneKnowledgeSaveRequest, VariantKnowledgeSaveRequest,
   ReportBody, ReportPreviewResponse,
@@ -30,6 +30,12 @@ export type GeneKnowledgeQuery = {
   lang?: string;
 };
 
+export interface ClassificationProgressJob {
+  orderId: string;
+  status: 'queued' | 'running' | 'succeeded' | 'failed';
+  classification?: { queued: number; running: number; succeeded: number; failed: number };
+}
+
 export const reviewApi = {
   /**
    * Client-side only: fetches the full analysis result.
@@ -40,6 +46,27 @@ export const reviewApi = {
       signal: opts?.signal,
       cache: 'no-store',
     }),
+  stopClassification: (orderId: string) =>
+    api.post<ReviewData>(`/review/${encodeURIComponent(orderId)}/classification-stop`, {}),
+  classificationProgress: (orderIds: string[]) =>
+    api.post<{ jobs: ClassificationProgressJob[] }>('/review/classification-progress', { orderIds }),
+  gvcEvidence: (
+    orderId: string,
+    query: { jobId: string; chrom: string; pos: number; ref: string; alt: string },
+    opts?: { signal?: AbortSignal },
+  ) => {
+    const qs = new URLSearchParams({
+      jobId: query.jobId,
+      chrom: query.chrom,
+      pos: String(query.pos),
+      ref: query.ref,
+      alt: query.alt,
+    });
+    return api.get<GvcEvidence>(`/review/${encodeURIComponent(orderId)}/gvc-evidence?${qs.toString()}`, {
+      signal: opts?.signal,
+      cache: 'no-store',
+    });
+  },
   classify: (orderId: string, body: ClassifyRequest) =>
     api.post<ClassifyResponse>(`/review/${orderId}/classify-variants`, body),
   getCoverageContext: (orderId: string) =>

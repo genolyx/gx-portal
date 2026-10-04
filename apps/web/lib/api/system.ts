@@ -115,6 +115,28 @@ export type QueueSummary = {
   >;
 };
 
+export type InterpretationSettings = {
+  source: 'pipeline' | 'gvc';
+  saved: boolean;
+  gvcConfigured: boolean;
+  url: string;
+  tokenPreview: string | null;
+  services: Partial<Record<'carrier_screening' | 'whole_exome' | 'hereditary_cancer' | 'health_screening', 'pipeline' | 'gvc'>>;
+};
+
+export type ServiceParityReport = {
+  orderId: string;
+  service: 'carrier_screening' | 'whole_exome' | 'hereditary_cancer' | 'health_screening' | null;
+  eligible: boolean;
+  agreed: boolean;
+  comparable: number;
+  matched: number;
+  mismatched: number;
+  held: number;
+  examples: Array<{ locus: string; pipeline: string; gvc: string }>;
+  message: string;
+};
+
 export const systemApi = {
   health:    () => api.get<SystemHealth>('/system/health'),
   queue:     () => api.get<QueueSummary>('/system/queue'),
@@ -215,6 +237,27 @@ export const systemApi = {
       inboundPreview: string | null;
       outboundPreview: string | null;
     }>('/system/external-keys/inbound/generate'),
+
+  getInterpretation: () =>
+    api.get<InterpretationSettings>('/system/interpretation'),
+
+  setInterpretation: (source: 'pipeline' | 'gvc') =>
+    api.put<InterpretationSettings>('/system/interpretation', { source }),
+
+  setInterpretationConnection: (body: { url?: string; token?: string }) =>
+    api.put<InterpretationSettings>('/system/interpretation/connection', body),
+
+  generateInterpretationToken: () =>
+    api.post<InterpretationSettings & { token: string }>('/system/interpretation/token/generate'),
+
+  compareInterpretation: (orderId: string) =>
+    api.post<ServiceParityReport>('/system/interpretation/parity', { orderId }),
+
+  setInterpretationService: (body: {
+    service: 'carrier_screening' | 'whole_exome' | 'hereditary_cancer' | 'health_screening';
+    source: 'pipeline' | 'gvc' | 'default';
+    orderId?: string;
+  }) => api.put<InterpretationSettings>('/system/interpretation/services', body),
 
   setOutboundKey: (key: string) =>
     api.put<{

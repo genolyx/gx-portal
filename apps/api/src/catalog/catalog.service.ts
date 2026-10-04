@@ -77,7 +77,10 @@ export class CatalogService {
   }
 
   savePanel(body: unknown) {
-    return this.daemon.post<unknown>('/api/portal/wes-panels/custom', body);
+    const record = body && typeof body === 'object' ? { ...(body as Record<string, unknown>) } : {};
+    if (record.interpretation_genes_only === true) record.skip_generated_bed = true;
+    delete record.interpretation_genes_only;
+    return this.daemon.post<unknown>('/api/portal/wes-panels/custom', record);
   }
 
   deletePanel(id: string) {

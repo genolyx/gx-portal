@@ -36,10 +36,36 @@ export class ReviewController {
     return req.user as RequestUser;
   }
 
+  @Post('classification-progress')
+  @ApiOperation({ summary: 'GVC classification progress for review orders' })
+  classificationProgress(@Body() body: { orderIds?: string[] }, @Req() req: Request) {
+    return this.reviewService.classificationProgress(body?.orderIds ?? [], this.user(req));
+  }
+
+  @Get(':orderId/gvc-evidence')
+  @ApiOperation({ summary: 'GVC curation evidence and literature for one variant' })
+  gvcEvidence(
+    @Param('orderId') orderId: string,
+    @Query('jobId') jobId: string,
+    @Query('chrom') chrom: string,
+    @Query('pos') pos: string,
+    @Query('ref') ref: string,
+    @Query('alt') alt: string,
+    @Req() req: Request,
+  ) {
+    return this.reviewService.gvcEvidence(orderId, { jobId, chrom, pos, ref, alt }, this.user(req));
+  }
+
   @Get(':orderId/result')
   @ApiOperation({ summary: 'Get analysis result' })
   getResult(@Param('orderId') orderId: string, @Req() req: Request) {
     return this.reviewService.getResult(orderId, this.user(req));
+  }
+
+  @Post(':orderId/classification-stop')
+  @ApiOperation({ summary: 'Stop GVC variants that are still waiting' })
+  stopClassification(@Param('orderId') orderId: string, @Req() req: Request) {
+    return this.reviewService.stopClassification(orderId, this.user(req));
   }
 
   @Post(':orderId/classify-variants')

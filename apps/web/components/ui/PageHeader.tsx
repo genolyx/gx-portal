@@ -6,7 +6,7 @@ import { Button } from '@heroui/react';
 
 interface PageHeaderProps {
   title: string;
-  description?: string;
+  description?: React.ReactNode;
   backHref?: string;
   actions?: React.ReactNode;
 }

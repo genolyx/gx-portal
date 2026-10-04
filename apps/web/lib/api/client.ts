@@ -40,8 +40,8 @@ async function request<T>(
       const json = JSON.parse(text) as { message?: string };
       message = json.message ?? text;
     } catch {}
-    // 401: token expired → redirect to login
-    if (res.status === 401 && typeof window !== 'undefined') {
+    // 401: token expired → redirect to login. Stay put if this request already is the login page.
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
       return undefined as T;
     }
@@ -65,7 +65,7 @@ async function requestText(path: string): Promise<string> {
       const json = JSON.parse(text) as { message?: string };
       message = json.message ?? text;
     } catch {}
-    if (res.status === 401 && typeof window !== 'undefined') {
+    if (res.status === 401 && typeof window !== 'undefined' && !window.location.pathname.startsWith('/login')) {
       window.location.href = `/login?from=${encodeURIComponent(window.location.pathname)}`;
       return '';
     }

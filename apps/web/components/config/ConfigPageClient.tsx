@@ -14,7 +14,7 @@ import {
   Switch,
 } from '@heroui/react';
 import { Pause, Play, Trash2, Eye, EyeOff, Copy, Check } from 'lucide-react';
-import { systemApi } from '../../lib/api/system';
+import { systemApi, type InterpretationSettings, type ServiceParityReport } from '../../lib/api/system';
 import { authApi } from '../../lib/api/auth';
 import type { UserProfile } from '@gx-portal/types';
 import { DAEMON_PRESETS, DAEMON_URL_KEY } from '../../lib/daemon-presets';
@@ -679,6 +679,352 @@ function PipelineOptionsSection() {
   );
 }
 
+const CLASSIFICATION_SERVICES = [
+  { id: 'carrier_screening' as const, label: 'Carrier screening' },
+  { id: 'whole_exome' as const, label: 'Whole exome' },
+  { id: 'hereditary_cancer' as const, label: 'Hereditary cancer' },
+  { id: 'health_screening' as const, label: 'Health screening' },
+];
+
+function ClassificationSourceSection() {
+  const [source, setSource] = useState<'pipeline' | 'gvc'>('pipeline');
+  const [services, setServices] = useState<InterpretationSettings['services']>({});
+  const [orderDrafts, setOrderDrafts] = useState<Record<string, string>>({});
+  const [reports, setReports] = useState<Record<string, ServiceParityReport>>({});
+  const [gvcConfigured, setGvcConfigured] = useState(false);
+  const [url, setUrl] = useState('');
+  const [tokenPreview, setTokenPreview] = useState<string | null>(null);
+  const [tokenDraft, setTokenDraft] = useState('');
+  const [showToken, setShowToken] = useState(false);
+  const [freshToken, setFreshToken] = useState<string | null>(null);
+  const [showFresh, setShowFresh] = useState(true);
+  const [copied, setCopied] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+
+  const apply = (cfg: InterpretationSettings) => {
+    setSource(cfg.source);
+    setGvcConfigured(cfg.gvcConfigured);
+    setUrl(cfg.url);
+    setTokenPreview(cfg.tokenPreview);
+    setServices(cfg.services ?? {});
+  };
+
+  useEffect(() => {
+    systemApi
+      .getInterpretation()
+      .then(apply)
+      .catch(() => setMsg({ ok: false, text: 'Could not load the classification setting.' }));
+  }, []);
+
+  const save = async (next: 'pipeline' | 'gvc') => {
+    setSource(next);
+    setSaving(true);
+    setMsg(null);
+    try {
+      const cfg = await systemApi.setInterpretation(next);
+      apply(cfg);
+      setMsg({
+        ok: true,
+        text: cfg.source === 'gvc'
+          ? cfg.gvcConfigured
+            ? 'Reviews now request classifications from GVC. A failed request still shows the portal result.'
+            : 'GVC is selected. Save the URL and token below. Until then, reviews keep the portal result.'
+          : 'Reviews use the portal classification again. Per-service GVC choices were cleared.',
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveUrl = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const cfg = await systemApi.setInterpretationConnection({ url });
+      apply(cfg);
+      setMsg({ ok: true, text: cfg.url ? 'GVC URL saved.' : 'GVC URL cleared.' });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const saveToken = async () => {
+    setSaving(true);
+    setMsg(null);
+    try {
+      const cfg = await systemApi.setInterpretationConnection({ token: tokenDraft });
+      apply(cfg);
+      setTokenDraft('');
+      setFreshToken(null);
+      setMsg({
+        ok: true,
+        text: tokenDraft.trim()
+          ? 'GVC token saved. It must match the token in GVC Settings.'
+          : 'Saved GVC token cleared.',
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const generateToken = async () => {
+    if (
+      tokenPreview &&
+      !window.confirm('Generate a new GVC token? The previous token will stop working until GVC uses this one.')
+    ) {
+      return;
+    }
+    setSaving(true);
+    setMsg(null);
+    try {
+      const res = await systemApi.generateInterpretationToken();
+      apply(res);
+      setFreshToken(res.token);
+      setShowFresh(true);
+      setTokenDraft('');
+      setMsg({
+        ok: true,
+        text: 'Token generated. Copy it into GVC Settings. GVC uses a saved token immediately.',
+      });
+    } catch (e) {
+      setMsg({ ok: false, text: e instanceof Error ? e.message : 'Generate failed' });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const copyToken = async () => {
+    if (!freshToken) return;
+    try {
+      await navigator.clipboard.writeText(freshToken);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      /* ignore */
+    }
+  };
+
+  return (
+    <Section
+      title="Classification"
+      description="Portal classification keeps every review on the portal and clears per-service choices. GVC classifies carrier, whole exome, hereditary cancer, and health screening variants. Health screening does not send dark genes. Include PGx and Include APOE PGx are sent with the order, and GVC decides whether those results stay on the PGx tab. A service moves to GVC on its own only after one of its orders matches the portal labels."
+    >
+      <RadioGroup
+        value={source}
+        onChange={(value) => { void save(value === 'gvc' ? 'gvc' : 'pipeline'); }}
+        isDisabled={saving}
+        className="gap-3"
+      >
+        <Radio value="pipeline">
+          <Radio.Content>
+            <Radio.Control>
+              <Radio.Indicator />
+            </Radio.Control>
+            Portal classification
+          </Radio.Content>
+        </Radio>
+        <Radio value="gvc">
+          <Radio.Content>
+            <Radio.Control>
+              <Radio.Indicator />
+            </Radio.Control>
+            GVC external API
+          </Radio.Content>
+        </Radio>
+      </RadioGroup>
+      <div className="flex flex-col gap-3 border-t border-border pt-4">
+        {CLASSIFICATION_SERVICES.map((service) => {
+          const chosen = services[service.id];
+          const effective = chosen ?? source;
+          const report = reports[service.id];
+          return (
+            <div key={service.id} className="flex flex-col gap-2 rounded-lg border border-border p-3">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-sm font-medium">{service.label}</span>
+                <span className="text-xs text-muted">
+                  {effective === 'gvc' ? 'GVC' : 'Portal'}
+                  {chosen ? '' : ' (follows the choice above)'}
+                </span>
+              </div>
+              <div className="flex flex-wrap items-end gap-2">
+                <div className="min-w-[180px] flex-1">
+                  <Input
+                    aria-label={`${service.label} order`}
+                    value={orderDrafts[service.id] ?? ''}
+                    onChange={(e) => setOrderDrafts((prev) => ({ ...prev, [service.id]: e.target.value }))}
+                    placeholder="Order ID to compare"
+                    fullWidth
+                    className="font-mono text-sm"
+                  />
+                </div>
+                <Button
+                  size="sm"
+                  variant="secondary"
+                  isDisabled={saving || !(orderDrafts[service.id] ?? '').trim()}
+                  onPress={() => {
+                    const orderId = (orderDrafts[service.id] ?? '').trim();
+                    setSaving(true);
+                    setMsg(null);
+                    void systemApi.compareInterpretation(orderId)
+                      .then((next) => {
+                        setReports((prev) => ({ ...prev, [service.id]: next }));
+                        setMsg({ ok: next.agreed, text: next.message });
+                      })
+                      .catch((e) => setMsg({ ok: false, text: e instanceof Error ? e.message : 'Compare failed' }))
+                      .finally(() => setSaving(false));
+                  }}
+                >
+                  Compare
+                </Button>
+                {effective === 'gvc' ? (
+                  <Button
+                    size="sm"
+                    variant="secondary"
+                    isDisabled={saving}
+                    onPress={() => {
+                      setSaving(true);
+                      setMsg(null);
+                      void systemApi.setInterpretationService({
+                        service: service.id,
+                        source: source === 'gvc' ? 'pipeline' : 'default',
+                      })
+                        .then((cfg) => {
+                          apply(cfg);
+                          setMsg({ ok: true, text: `${service.label} uses the portal classification.` });
+                        })
+                        .catch((e) => setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' }))
+                        .finally(() => setSaving(false));
+                    }}
+                  >
+                    Use portal
+                  </Button>
+                ) : (
+                  <Button
+                    size="sm"
+                    variant="primary"
+                    isDisabled={saving || !report?.agreed || report.service !== service.id}
+                    onPress={() => {
+                      const orderId = (orderDrafts[service.id] ?? '').trim();
+                      setSaving(true);
+                      setMsg(null);
+                      void systemApi.setInterpretationService({ service: service.id, source: 'gvc', orderId })
+                        .then((cfg) => {
+                          apply(cfg);
+                          setMsg({ ok: true, text: `${service.label} now uses GVC. Other services stay as they are.` });
+                        })
+                        .catch((e) => setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' }))
+                        .finally(() => setSaving(false));
+                    }}
+                  >
+                    Use GVC
+                  </Button>
+                )}
+              </div>
+              {report?.service === service.id && report.examples.length > 0 && (
+                <ul className="text-xs text-muted">
+                  {report.examples.map((example) => (
+                    <li key={example.locus}>
+                      {example.locus}: portal {example.pipeline}, GVC {example.gvc}
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex flex-col gap-5 border-t border-border pt-4">
+        <div className="flex flex-col gap-1.5">
+          <Label htmlFor="gvcUrl">GVC URL</Label>
+          <div className="flex flex-wrap items-end gap-2">
+            <div className="min-w-[240px] flex-1">
+              <Input
+                id="gvcUrl"
+                type="text"
+                value={url}
+                onChange={(e) => setUrl(e.target.value)}
+                placeholder="http://localhost:3010"
+                fullWidth
+                className="font-mono text-sm"
+              />
+            </div>
+            <Button size="sm" variant="primary" isDisabled={saving} onPress={saveUrl}>
+              Save URL
+            </Button>
+          </div>
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <Label>GVC API token</Label>
+          <p className="text-xs text-muted">
+            Generate a token here and paste it into GVC Settings, or paste a token generated on GVC.
+            {tokenPreview ? ` Current: ${tokenPreview}` : ' Not configured.'}
+            {gvcConfigured ? ' URL and token are ready.' : ' Reviews keep the portal result until both are set.'}
+          </p>
+          {freshToken && (
+            <div className="flex flex-wrap items-center gap-2">
+              <Input
+                type={showFresh ? 'text' : 'password'}
+                value={freshToken}
+                readOnly
+                fullWidth
+                className="font-mono text-sm"
+              />
+              <Button
+                size="sm"
+                variant="secondary"
+                onPress={() => setShowFresh((v) => !v)}
+                aria-label={showFresh ? 'Hide token' : 'Show token'}
+              >
+                {showFresh ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+              </Button>
+              <Button size="sm" variant="secondary" onPress={copyToken}>
+                {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
+                {copied ? ' Copied' : ' Copy'}
+              </Button>
+            </div>
+          )}
+          <div>
+            <Button size="sm" variant="primary" isDisabled={saving} onPress={generateToken}>
+              {tokenPreview ? 'Generate new token' : 'Generate token'}
+            </Button>
+          </div>
+          <div className="flex flex-wrap items-end gap-2 pt-2">
+            <div className="min-w-[240px] flex-1">
+              <Input
+                type={showToken ? 'text' : 'password'}
+                value={tokenDraft}
+                onChange={(e) => setTokenDraft(e.target.value)}
+                placeholder="Paste an existing GVC partner token"
+                fullWidth
+                className="font-mono text-sm"
+              />
+            </div>
+            <Button
+              size="sm"
+              variant="secondary"
+              onPress={() => setShowToken((v) => !v)}
+              aria-label={showToken ? 'Hide token' : 'Show token'}
+            >
+              {showToken ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+            </Button>
+            <Button size="sm" variant="primary" isDisabled={saving} onPress={saveToken}>
+              Save token
+            </Button>
+          </div>
+        </div>
+      </div>
+      {msg && <p className={msg.ok ? 'text-sm text-success' : 'text-sm text-danger'}>{msg.text}</p>}
+    </Section>
+  );
+}
+
 function ExternalPortalKeysSection() {
   const [status, setStatus] = useState<{
     inboundConfigured: boolean;
@@ -863,10 +1209,11 @@ export function ConfigPageClient() {
     <div>
       <PageHeader
         title="Configuration"
-        description="Portal and gx-daemon connection, AI provider, pipeline options, and external portal keys."
+        description="Portal and gx-daemon connection, classification source, AI provider, pipeline options, and external portal keys."
       />
       <div className="flex flex-col gap-6">
         <DaemonConnectionSection />
+        {isAdmin ? <ClassificationSourceSection /> : null}
         <AiProviderSection />
         <PipelineOptionsSection />
         {isAdmin ? <ExternalPortalKeysSection /> : null}

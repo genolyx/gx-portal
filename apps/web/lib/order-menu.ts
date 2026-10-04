@@ -46,13 +46,15 @@ export function buildOrderMenuItems(order: Order): OrderMenuItem[] {
 
   items.push({ action: 'edit', label: 'Edit' });
 
-  if ((st === 'COMPLETED' || st === 'REPORT_READY') && pipeline && !isVcfOnlyWesOrder(order)) {
+  if ((st === 'COMPLETED' || st === 'REPORT_READY') && pipeline) {
     items.push({ action: 'review', label: 'Review' });
-    items.push({
-      action: 'new-from',
-      label: 'New order from this…',
-      title: 'New draft with copied clinical fields and FASTQ/BAM paths; enter a new Order ID',
-    });
+    if (!isVcfOnlyWesOrder(order)) {
+      items.push({
+        action: 'new-from',
+        label: 'New order from this…',
+        title: 'New draft with copied clinical fields and FASTQ/BAM paths; enter a new Order ID',
+      });
+    }
   }
 
   const gx = gxPortalMeta(order);

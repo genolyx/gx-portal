@@ -35,6 +35,10 @@ export interface PopulatedOrderForm {
   captureBed: string;
   diseaseBed: string;
   maxAf: string;
+  minQual: string;
+  minGq: string;
+  minDepth: string;
+  passOnly: boolean;
   hpoTerms: string;
   geneFilter: string;
   wesPanel: string;
@@ -42,6 +46,8 @@ export interface PopulatedOrderForm {
   includeApoePgx: boolean;
   panelFilterAfterAnalysis: boolean;
   interpretationGenesExtra: string;
+  gvcPanelCode: string;
+  gvcFrequencyTrack: string;
   carrier: Record<string, unknown>;
   nipt: Record<string, unknown>;
 }
@@ -140,6 +146,10 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
     captureBed: str(p.capture_bed),
     diseaseBed: str(p.disease_bed),
     maxAf: p.max_af != null ? String(p.max_af) : '',
+    minQual: p.min_qual != null ? String(p.min_qual) : '',
+    minGq: p.min_gq != null ? String(p.min_gq) : '',
+    minDepth: p.min_depth != null ? String(p.min_depth) : '',
+    passOnly: bool(p.pass_only, true),
     hpoTerms: str(p.hpo_terms),
     geneFilter: str(p.gene_filter),
     wesPanel: vcfOnly ? FULL_WES_PANEL_ID : str(p.wes_panel_id || c.wes_panel_id),
@@ -147,6 +157,8 @@ export function populateOrderForm(order: Order, mode: 'edit' | 'followUp'): Popu
     includeApoePgx: vcfOnly ? false : bool(p.include_apoe_pgx),
     panelFilterAfterAnalysis: vcfOnly ? false : bool(p.panel_filter_after_analysis, true),
     interpretationGenesExtra: str(p.interpretation_genes_extra || c.interpretation_genes_extra),
+    gvcPanelCode: str(p.gvc_panel_code),
+    gvcFrequencyTrack: str(p.gvc_frequency_track),
     carrier,
     nipt,
   };

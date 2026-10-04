@@ -21,6 +21,7 @@ import { PageHeader } from '../../ui/PageHeader';
 import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
 import { gxPortalMeta, isVcfOnlyWesOrder, type Order } from '@gx-portal/types';
 import { VcfDownloadButtons } from '../VcfDownloadButtons';
+import { ClassificationProgress, useClassificationProgress } from '../../review/ClassificationProgress';
 import { cn } from '../../../lib/utils';
 import {
   formatPortalDate,
@@ -462,7 +463,7 @@ function ActionBar({ order, onDone }: { order: Order; onDone: () => void }) {
 
   const canStart  = ['SAVED', 'FAILED', 'CANCELLED'].includes(order.status);
   const canStop   = ['RUNNING', 'QUEUED'].includes(order.status);
-  const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status) && !isVcfOnlyWesOrder(order);
+  const canReview = ['COMPLETED', 'REPORT_READY'].includes(order.status);
   const canDownloadVcf = ['COMPLETED', 'REPORT_READY'].includes(order.status) && isVcfOnlyWesOrder(order);
   const canSendGx = Boolean(gxPortalMeta(order)?.report_url) && canReview;
 
@@ -730,6 +731,9 @@ export function OrderDetailPage({ id }: { id: string }) {
   }, [id]);
 
   useEffect(() => { load(); }, [load]);
+  const classification = useClassificationProgress(
+    order && ['COMPLETED', 'REPORT_READY'].includes(order.status) ? [order.order_id] : [],
+  );
 
   if (loading) return <p className="p-8 text-muted text-sm">Loading…</p>;
   if (error) {
@@ -767,6 +771,12 @@ export function OrderDetailPage({ id }: { id: string }) {
             </p>
           )}
           <p className="text-sm text-muted mt-0.5">{order.service_code}</p>
+          {['COMPLETED', 'REPORT_READY'].includes(order.status) && (
+            <div className="mt-3 max-w-xs">
+              <p className="mb-1 text-[11px] uppercase tracking-wider text-muted">Classification</p>
+              <ClassificationProgress job={classification[order.order_id]} />
+            </div>
+          )}
         </div>
         <OrderStatusBadge status={order.status} />
       </div>

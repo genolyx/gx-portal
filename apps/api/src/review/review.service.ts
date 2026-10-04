@@ -1,6 +1,6 @@
 import * as path from 'path';
 import * as fs from 'fs';
-import { Injectable } from '@nestjs/common';
+import { ConflictException, Injectable } from '@nestjs/common';
 import { DaemonService } from '../daemon/daemon.service';
 import { OrdersService } from '../orders/orders.service';
 import { OrderRegistryService, RequestUser } from '../orders/order-registry.service';
@@ -14,7 +14,9 @@ import type {
   ClassifyRequest,
   ClassifyResponse,
 } from '@gx-portal/types';
+import { isVcfOnlyWesOrder } from '@gx-portal/types';
 import { normalizeSgniptReviewData } from './sgnipt-normalize';
+import { GvcPartnerService } from './gvc-partner.service';
 
 @Injectable()
 export class ReviewService {
@@ -22,6 +24,7 @@ export class ReviewService {
     private readonly daemon: DaemonService,
     private readonly ordersService: OrdersService,
     private readonly registry: OrderRegistryService,
+    private readonly gvc: GvcPartnerService,
   ) {}
 
   private guard(orderId: string, user?: RequestUser) {
@@ -34,33 +37,77 @@ export class ReviewService {
    */
   async getResult(orderId: string, user?: RequestUser): Promise<ReviewData> {
     this.guard(orderId, user);
+    const order = await this.daemon.get<{
+      service_code?: string;
+      sample_name?: string;
+      params?: Record<string, unknown>;
+    }>(`/order/${orderId}`);
+    // VCF-only exome result.json is the unfiltered call set (tens of megabytes).
+    // Review shows the GVC list, so that file is not loaded into the request.
+    if (isVcfOnlyWesOrder(order)) {
+      return this.gvc.attach(orderId, {
+        order_id: orderId,
+        service_code: order.service_code || 'whole_exome',
+        sample_name: order.sample_name,
+        order_params: order.params,
+        variants: [],
+      });
+    }
     const result = await this.daemon.get<ReviewData>(`/order/${orderId}/result`);
     const needsParams = !result?.order_params || typeof result.order_params !== 'object';
     const needsService = !result?.service_code && !result?._service_code;
 
     let merged = result;
     if (needsParams || needsService) {
-      try {
-        const order = await this.daemon.get<Record<string, unknown>>(`/order/${orderId}`);
-        const patch: Partial<ReviewData> = {};
-        if (needsParams && order?.params && typeof order.params === 'object') {
-          patch.order_params = order.params as Record<string, unknown>;
-        }
-        if (needsService && order?.service_code) {
-          patch.service_code = String(order.service_code);
-        }
-        merged = { ...result, ...patch };
-      } catch {
-        merged = result;
+      const patch: Partial<ReviewData> = {};
+      if (needsParams && order.params && typeof order.params === 'object') {
+        patch.order_params = order.params;
       }
+      if (needsService && order.service_code) {
+        patch.service_code = order.service_code;
+      }
+      merged = { ...result, ...patch };
     }
 
     // sgNIPT: clinical_findings → variants (+ variant_analysis seed)
-    return normalizeSgniptReviewData(merged);
+    const normalized = normalizeSgniptReviewData(merged);
+    return this.gvc.attach(orderId, normalized);
   }
 
-  classifyVariants(orderId: string, body: ClassifyRequest, user?: RequestUser): Promise<ClassifyResponse> {
+  gvcEvidence(
+    orderId: string,
+    query: { jobId?: string; chrom?: string; pos?: string; ref?: string; alt?: string },
+    user?: RequestUser,
+  ) {
     this.guard(orderId, user);
+    return this.gvc.variantEvidence(orderId, query);
+  }
+
+  async classificationProgress(orderIds: string[], user?: RequestUser) {
+    const allowed = (orderIds ?? []).filter((orderId) => {
+      try {
+        this.guard(orderId, user);
+        return true;
+      } catch {
+        return false;
+      }
+    });
+    const jobs = await this.gvc.progress(allowed);
+    return { jobs };
+  }
+
+  async stopClassification(orderId: string, user?: RequestUser): Promise<ReviewData> {
+    this.guard(orderId, user);
+    await this.gvc.stop(orderId);
+    return this.getResult(orderId, user);
+  }
+
+  async classifyVariants(orderId: string, body: ClassifyRequest, user?: RequestUser): Promise<ClassifyResponse> {
+    this.guard(orderId, user);
+    const current = await this.daemon.get<ReviewData>(`/order/${orderId}/result`);
+    if (this.gvc.sourceFor(current) === 'gvc') {
+      throw new ConflictException('This service uses GVC classifications. Portal classify is not used.');
+    }
     return this.daemon.post<ClassifyResponse>(`/order/${orderId}/classify-variants`, body);
   }
 

@@ -8,7 +8,8 @@ import { ordersApi } from '../../lib/api/orders';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { PageHeader } from '../ui/PageHeader';
 import { OrderStatusBadge } from '../ui/OrderStatusBadge';
-import { isVcfOnlyWesOrder, type Order } from '@gx-portal/types';
+import { ClassificationProgress, useClassificationProgress } from './ClassificationProgress';
+import type { Order } from '@gx-portal/types';
 
 const REVIEWABLE_STATUSES = new Set(['COMPLETED', 'REPORT_READY']);
 
@@ -16,13 +17,14 @@ export function ReviewListPageClient() {
   const router = useRouter();
   const [orders, setOrders] = useState<Order[]>([]);
   const [loading, setLoading] = useState(true);
+  const classification = useClassificationProgress(orders.map((order) => order.order_id));
 
   const load = useCallback(async () => {
     try {
       const res = await ordersApi.list();
       setOrders(
         (res.orders ?? []).filter(
-          (o) => REVIEWABLE_STATUSES.has(o.status) && !isVcfOnlyWesOrder(o),
+          (o) => REVIEWABLE_STATUSES.has(o.status),
         ),
       );
     } finally {
@@ -56,6 +58,7 @@ export function ReviewListPageClient() {
                 <Table.Column isRowHeader>Order ID</Table.Column>
                 <Table.Column>Service</Table.Column>
                 <Table.Column>Status</Table.Column>
+                <Table.Column>Classification</Table.Column>
                 <Table.Column>Updated</Table.Column>
                 <Table.Column> </Table.Column>
               </Table.Header>
@@ -75,6 +78,9 @@ export function ReviewListPageClient() {
                     </Table.Cell>
                     <Table.Cell>
                       <OrderStatusBadge status={o.status} />
+                    </Table.Cell>
+                    <Table.Cell>
+                      <ClassificationProgress job={classification[o.order_id]} />
                     </Table.Cell>
                     <Table.Cell>
                       <span className="text-xs text-muted whitespace-nowrap">

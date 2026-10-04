@@ -147,6 +147,7 @@ function MenuItem({
       data-current={current ? 'true' : undefined}
       className={cn('sidebar__menu-item', className)}
       {...props}
+      prefetch={false}
     >
       <span className="sidebar__menu-item-content">
         {icon != null && <span className="sidebar__menu-icon">{icon}</span>}

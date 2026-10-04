@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useCallback } from 'react';
+import { useState, useMemo, useCallback, useEffect } from 'react';
 import NextLink from 'next/link';
 import { Button, Card, Checkbox, Chip, Input, Link, ListBox, Select } from '@heroui/react';
 import {
@@ -14,7 +14,7 @@ import {
 } from 'lucide-react';
 import { reviewApi } from '../../../lib/api/review';
 import { useReviewStore } from '../../../lib/store/reviewStore';
-import type { Variant, AcmgClass, VariantLiterature } from '@gx-portal/types';
+import type { Variant, AcmgClass, VariantLiterature, GvcEvidence } from '@gx-portal/types';
 
 function TableCheckbox({
   isSelected,
@@ -108,6 +108,13 @@ function FilterSelect({
   );
 }
 
+function heldLabel(reason: string): string {
+  if (reason === 'vus') return 'ClinVar VUS';
+  if (reason === 'benign') return 'Homozygous benign';
+  if (reason === 'lab') return 'Major-lab benign';
+  return reason;
+}
+
 function clinvarLabel(v: Variant): string {
   return v.clinvar_sig_primary ?? v.clinvar_sig ?? v.clinvar_significance ?? '';
 }
@@ -185,7 +192,77 @@ function SortableTh({
   );
 }
 
-function VariantDetail({ variant: v, onClose }: { variant: Variant; onClose: () => void }) {
+function GvcEvidenceBlock({ evidence }: { evidence: GvcEvidence | 'loading' }) {
+  if (evidence === 'loading') {
+    return <p className="mt-3 text-xs text-muted">Loading GVC evidence…</p>;
+  }
+  if (!evidence.available) {
+    if (evidence.reason === 'not_ready') {
+      return <p className="mt-3 text-xs text-muted">GVC evidence is not ready yet. Pipeline literature stays below.</p>;
+    }
+    if (evidence.reason === 'not_found') {
+      return <p className="mt-3 text-xs text-muted">GVC has no curation document for this variant.</p>;
+    }
+    return null;
+  }
+  return (
+    <div className="mt-3 rounded-lg border border-border bg-surface-secondary p-3">
+      <div className="mb-2 text-xs font-semibold">GVC evidence</div>
+      {evidence.criteria.length > 0 && (
+        <ul className="mb-2 flex flex-col gap-1.5">
+          {evidence.criteria.map((criterion) => (
+            <li key={criterion.code} className="text-xs text-muted">
+              <span className="font-mono text-foreground">{criterion.code}</span>
+              {criterion.strength ? ` · ${criterion.strength.replace(/_/g, ' ')}` : ''}
+              {criterion.rationale ? ` — ${criterion.rationale}` : ''}
+            </li>
+          ))}
+        </ul>
+      )}
+      <p className="text-xs text-muted">
+        {[
+          evidence.gnomadAf != null ? `gnomAD AF ${evidence.gnomadAf}` : '',
+          evidence.caddPhred != null ? `CADD ${evidence.caddPhred}` : '',
+          evidence.revelScore != null ? `REVEL ${evidence.revelScore}` : '',
+          evidence.clinvarSignificance ? `ClinVar ${evidence.clinvarSignificance}` : '',
+          evidence.hgmdMatch ? `HGMD ${evidence.hgmdMatch}` : '',
+        ].filter(Boolean).join(' · ') || 'No population scores on this document.'}
+      </p>
+      <div className="mt-2 text-xs">
+        <span className="font-semibold">Literature</span>
+        {evidence.literatureStatus ? <span className="text-muted"> · {evidence.literatureStatus.replace(/_/g, ' ')}</span> : null}
+      </div>
+      {evidence.literatureError && <p className="mt-1 text-xs text-muted">{evidence.literatureError}</p>}
+      {evidence.pmids.length > 0 && (
+        <div className="mt-1 flex flex-wrap gap-2">
+          {evidence.pmids.map((pmid) => (
+            <Link
+              key={pmid}
+              href={`https://pubmed.ncbi.nlm.nih.gov/${pmid}/`}
+              target="_blank"
+              rel="noreferrer"
+              className="font-mono text-xs"
+            >
+              {pmid}
+            </Link>
+          ))}
+        </div>
+      )}
+      {evidence.clinicalSummary && <p className="mt-2 whitespace-pre-wrap text-xs text-muted">{evidence.clinicalSummary}</p>}
+      {evidence.functionalSummary && <p className="mt-1 whitespace-pre-wrap text-xs text-muted">{evidence.functionalSummary}</p>}
+    </div>
+  );
+}
+
+function VariantDetail({
+  variant: v,
+  evidence,
+  onClose,
+}: {
+  variant: Variant;
+  evidence: GvcEvidence | 'loading' | null;
+  onClose: () => void;
+}) {
   return (
     <Card className="mb-3">
       <Card.Header className="flex-row items-start justify-between gap-2">
@@ -213,6 +290,9 @@ function VariantDetail({ variant: v, onClose }: { variant: Variant; onClose: () 
           <dt className="font-semibold text-muted">dbSNP</dt><dd className="m-0">{v.dbsnp_rsid ?? '—'}</dd>
           <dt className="font-semibold text-muted">HGMD class</dt><dd className="m-0">{v.hgmd_class ?? '—'}</dd>
           <dt className="font-semibold text-muted">ACMG</dt><dd className="m-0">{v.acmg_classification ?? '—'}</dd>
+          {v.gvc_held_reason && (
+            <><dt className="font-semibold text-muted">GVC filter</dt><dd className="m-0">Held · {heldLabel(v.gvc_held_reason)}</dd></>
+          )}
           {v.acmg_criteria && v.acmg_criteria.length > 0 && (
             <><dt className="font-semibold text-muted">ACMG criteria</dt><dd className="m-0">{v.acmg_criteria.join(', ')}</dd></>
           )}
@@ -231,7 +311,10 @@ function VariantDetail({ variant: v, onClose }: { variant: Variant; onClose: () 
             <><dt className="font-semibold text-muted">Curated notes</dt><dd className="m-0">{v.curated_notes}</dd></>
           )}
         </dl>
-        <LiteratureBlock variant={v} />
+        {evidence && <GvcEvidenceBlock evidence={evidence} />}
+        {!(evidence && evidence !== 'loading' && evidence.available && (evidence.pmids.length > 0 || evidence.clinicalSummary || evidence.functionalSummary)) && (
+          <LiteratureBlock variant={v} />
+        )}
       </Card.Content>
     </Card>
   );
@@ -290,12 +373,14 @@ export function VariantTable({ orderId }: { orderId: string }) {
   } = useReviewStore();
 
   const [classifying, setClassifying] = useState(false);
+  const gvcJobId = reviewData?.interpretation?.source === 'gvc' ? reviewData.interpretation.jobId : undefined;
 
   const [search, setSearch] = useState('');
   const [acmgFilter, setAcmgFilter] = useState('');
   const [geneFilter, setGeneFilter] = useState('');
   const [clinvarFilter, setClinvarFilter] = useState('');
   const [tagFilter, setTagFilter] = useState('');
+  const [variantScope, setVariantScope] = useState('');
   const [vafMode, setVafMode] = useState('');
   const [vafFrom, setVafFrom] = useState('');
   const [vafTo, setVafTo] = useState('');
@@ -304,8 +389,42 @@ export function VariantTable({ orderId }: { orderId: string }) {
   const [sortDir, setSortDir] = useState<SortDir>(null);
 
   const [detailId, setDetailId] = useState<string | null>(null);
+  const [gvcEvidence, setGvcEvidence] = useState<GvcEvidence | 'loading' | null>(null);
 
   const variants = reviewData?.variants ?? [];
+  const detailVariant = variants.find((item) => item.variant_id === detailId);
+
+  useEffect(() => {
+    if (!detailVariant || !gvcJobId || detailVariant.gvc_held_reason || detailVariant.pos == null) {
+      setGvcEvidence(null);
+      return;
+    }
+    const controller = new AbortController();
+    setGvcEvidence('loading');
+    reviewApi.gvcEvidence(orderId, {
+      jobId: gvcJobId,
+      chrom: String(detailVariant.chrom ?? ''),
+      pos: detailVariant.pos,
+      ref: String(detailVariant.ref ?? ''),
+      alt: String(detailVariant.alt ?? ''),
+    }, { signal: controller.signal })
+      .then((evidence) => {
+        if (!controller.signal.aborted) setGvcEvidence(evidence);
+      })
+      .catch(() => {
+        if (!controller.signal.aborted) setGvcEvidence({ available: false, reason: 'unavailable', criteria: [], pmids: [] });
+      });
+    return () => controller.abort();
+  }, [
+    detailVariant,
+    detailVariant?.gvc_held_reason,
+    detailVariant?.chrom,
+    detailVariant?.pos,
+    detailVariant?.ref,
+    detailVariant?.alt,
+    gvcJobId,
+    orderId,
+  ]);
 
   const geneOptions = useMemo(() => {
     const genes = [...new Set(variants.map((v) => v.gene).filter(Boolean))].sort();
@@ -340,7 +459,7 @@ export function VariantTable({ orderId }: { orderId: string }) {
         const searchable = [
           v.gene, v.hgvsc, v.hgvsp, v.chrom ? `${v.chrom}:${v.pos}` : '',
           v.effect, ...(v.diseases ?? [v.disease ?? '']),
-          v.clinvar_sig_primary, v.acmg_classification,
+          v.clinvar_sig_primary, v.acmg_classification, v.gvc_held_reason,
         ].join(' ').toLowerCase();
         if (!searchable.includes(q)) return false;
       }
@@ -351,6 +470,8 @@ export function VariantTable({ orderId }: { orderId: string }) {
         if (!cl.includes(clinvarFilter.toLowerCase())) return false;
       }
       if (tagFilter && !(v.tags ?? []).includes(tagFilter)) return false;
+      if (variantScope === 'held' && !v.gvc_held_reason) return false;
+      if (variantScope === 'classification' && v.gvc_held_reason) return false;
       if (vafMode && v.vaf != null) {
         const inRange = (vafFromN == null || v.vaf >= vafFromN) && (vafToN == null || v.vaf <= vafToN);
         if (vafMode === 'include' && !inRange) return false;
@@ -358,7 +479,7 @@ export function VariantTable({ orderId }: { orderId: string }) {
       }
       return true;
     });
-  }, [variants, search, acmgFilter, geneFilter, clinvarFilter, tagFilter, vafMode, vafFrom, vafTo]);
+  }, [variants, search, acmgFilter, geneFilter, clinvarFilter, tagFilter, variantScope, vafMode, vafFrom, vafTo]);
 
   const sorted = useMemo(() => {
     if (!sortKey || !sortDir) return filtered;
@@ -372,12 +493,16 @@ export function VariantTable({ orderId }: { orderId: string }) {
   }, [filtered, sortKey, sortDir]);
 
   const handleClassify = async () => {
-    const toClassify = filtered.slice(0, 200).map((v) => ({
-      variant_id: v.variant_id, chrom: v.chrom, pos: v.pos,
-      ref: v.ref, alt: v.alt, gene: v.gene,
-    }));
     setClassifying(true);
     try {
+      if (reviewData?.interpretation?.source === 'gvc') {
+        setReviewData(await reviewApi.getResult(orderId));
+        return;
+      }
+      const toClassify = filtered.slice(0, 200).map((v) => ({
+        variant_id: v.variant_id, chrom: v.chrom, pos: v.pos,
+        ref: v.ref, alt: v.alt, gene: v.gene,
+      }));
       const res = await reviewApi.classify(orderId, { variants: toClassify });
       if (reviewData) {
         const updated = reviewData.variants.map((v) => {
@@ -417,8 +542,23 @@ export function VariantTable({ orderId }: { orderId: string }) {
     { value: 'exclude', label: 'Hide range' },
   ];
 
+  const heldCount = variants.filter((variant) => variant.gvc_held_reason).length;
+  const classificationCount = variants.length - heldCount;
+  const fromGvc = reviewData?.interpretation?.source === 'gvc' && variants.length > 0;
+
   return (
     <div>
+      {fromGvc && (
+        <p className="mb-2.5 text-xs leading-relaxed text-muted">
+          <strong className="text-foreground">{variants.length}</strong> variants from GVC.
+          {' '}<strong className="text-foreground">{classificationCount}</strong> are the classification set.
+          {heldCount > 0 && (
+            <>
+              {' '}<strong className="text-foreground">{heldCount}</strong> are held: they stay in this table and are not classified.
+            </>
+          )}
+        </p>
+      )}
       <div className="mb-2.5 flex flex-wrap items-center gap-2">
         <Input
           placeholder="Search gene, position, disease…"
@@ -432,6 +572,18 @@ export function VariantTable({ orderId }: { orderId: string }) {
         <FilterSelect value={clinvarFilter} onChange={setClinvarFilter} options={CLINVAR_OPTIONS} ariaLabel="ClinVar filter" />
         {tagOptions.length > 1 && (
           <FilterSelect value={tagFilter} onChange={setTagFilter} options={tagOptions} ariaLabel="Tag filter" />
+        )}
+        {heldCount > 0 && (
+          <FilterSelect
+            value={variantScope}
+            onChange={setVariantScope}
+            options={[
+              { value: '', label: `All variants (${variants.length})` },
+              { value: 'classification', label: `Classification (${classificationCount})` },
+              { value: 'held', label: `Held (${heldCount})` },
+            ]}
+            ariaLabel="Variant scope"
+          />
         )}
 
         <span className="text-[11px] font-semibold text-muted">VAF</span>
@@ -487,7 +639,7 @@ export function VariantTable({ orderId }: { orderId: string }) {
 
       {detailId && (() => {
         const v = variants.find((x) => x.variant_id === detailId);
-        return v ? <VariantDetail variant={v} onClose={() => setDetailId(null)} /> : null;
+        return v ? <VariantDetail variant={v} evidence={gvcEvidence} onClose={() => setDetailId(null)} /> : null;
       })()}
 
       {sorted.length === 0 ? (
@@ -596,14 +748,21 @@ function VariantRow({
         }
       </td>
       <td className="whitespace-nowrap px-2.5 py-1">
-        {v.acmg_classification
-          ? (
-            <Chip color={ACMG_COLOR[v.acmg_classification] ?? 'default'} size="sm" variant="soft">
-              <Chip.Label>{v.acmg_classification.replace(/_/g, ' ')}</Chip.Label>
+        <div className="flex flex-col items-start gap-1">
+          {v.acmg_classification
+            ? (
+              <Chip color={ACMG_COLOR[v.acmg_classification] ?? 'default'} size="sm" variant="soft">
+                <Chip.Label>{v.acmg_classification.replace(/_/g, ' ')}</Chip.Label>
+              </Chip>
+            )
+            : <span className="text-muted">—</span>
+          }
+          {v.gvc_held_reason && (
+            <Chip color="warning" size="sm" variant="soft">
+              <Chip.Label>Held · {heldLabel(v.gvc_held_reason)}</Chip.Label>
             </Chip>
-          )
-          : <span className="text-muted">—</span>
-        }
+          )}
+        </div>
       </td>
       <td className="whitespace-nowrap px-2.5 py-1">
         {v.tags && v.tags.length > 0

@@ -190,6 +190,7 @@ export function PanelsPageClient() {
           .map((g) => g.trim())
           .filter(Boolean),
         interpretation_genes_only: form.interpretationGenesOnly,
+        skip_generated_bed: form.interpretationGenesOnly,
       };
       await catalogApi.savePanel(body);
       setSaveMsg('✓ Package saved');

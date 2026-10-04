@@ -252,10 +252,70 @@ export interface CoverageContext {
   prior_reuse_order_id?: string;
 }
 
+export type InterpretationServiceName =
+  | 'carrier_screening'
+  | 'whole_exome'
+  | 'hereditary_cancer'
+  | 'health_screening';
+
+export type InterpretationServiceSources = Partial<
+  Record<InterpretationServiceName, 'pipeline' | 'gvc'>
+>;
+
+export interface ServiceParityReport {
+  orderId: string;
+  service: InterpretationServiceName | null;
+  eligible: boolean;
+  agreed: boolean;
+  comparable: number;
+  matched: number;
+  mismatched: number;
+  held: number;
+  examples: Array<{ locus: string; pipeline: string; gvc: string }>;
+  message: string;
+}
+
+export interface ReviewInterpretation {
+  source: 'pipeline' | 'gvc';
+  status: 'pipeline' | 'skipped' | 'queued' | 'running' | 'succeeded' | 'failed';
+  track?: string;
+  rulesetVersion?: string;
+  /** Partner job id. Present when this review load talked to GVC. */
+  jobId?: string;
+  message?: string;
+}
+
+export interface GvcCriterionEvidence {
+  code: string;
+  strength: string;
+  direction: string;
+  rationale: string;
+}
+
+/** Evidence and literature projected from a GVC CurationDocument. Report prose stays in the portal. */
+export interface GvcEvidence {
+  available: boolean;
+  reason?: 'pipeline' | 'not_ready' | 'not_found' | 'mismatch' | 'unavailable';
+  classification?: string | null;
+  criteria: GvcCriterionEvidence[];
+  gnomadAf?: number | null;
+  caddPhred?: number | null;
+  revelScore?: number | null;
+  clinvarSignificance?: string | null;
+  hgmdMatch?: string | null;
+  literatureStatus?: string | null;
+  literatureError?: string | null;
+  pmids: string[];
+  clinicalSummary?: string;
+  functionalSummary?: string;
+}
+
 export interface ReviewData {
   order_id: string;
   service_code?: string;
   _service_code?: string;
+  /** Which system supplied ACMG labels for this review load. */
+  interpretation?: ReviewInterpretation;
   type?: string;
   status?: string;
   sample_name?: string;

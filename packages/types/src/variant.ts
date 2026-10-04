@@ -58,6 +58,11 @@ export interface Variant {
   acmg_classification?: AcmgClass;
   acmg_criteria?: string[];
   acmg_reasoning?: string;
+  /**
+   * Set when GVC kept the variant out of automatic classification
+   * (ClinVar VUS, homozygous benign, or a major-lab benign call).
+   */
+  gvc_held_reason?: string;
   acmg_rule_based?: unknown;
   acmg_ai?: unknown;
   /** Legacy single disease string */

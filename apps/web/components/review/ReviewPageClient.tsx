@@ -1,12 +1,10 @@
 'use client';
 
 import { startTransition, useEffect, useMemo, useState } from 'react';
+import Link from 'next/link';
 import { Accordion, Button, Card, Chip, Disclosure, Spinner, Tabs } from '@heroui/react';
 import { catalogApi } from '../../lib/api/catalog';
-import { ordersApi } from '../../lib/api/orders';
 import { reviewApi, reviewResultUrl } from '../../lib/api/review';
-import { isVcfOnlyWesOrder } from '@gx-portal/types';
-import { VcfDownloadButtons } from '../orders/VcfDownloadButtons';
 import { formatPortalDateTime } from '../../lib/datetime';
 import { getVisibleReviewTabs, reviewOrderKind, type ReviewTabId } from '../../lib/review-tabs';
 import { isSgniptReviewData, normalizeSgniptReviewData } from '../../lib/sgnipt-normalize';
@@ -442,9 +440,23 @@ function SgniptBanner({ rd }: { rd: ReviewData }) {
   );
 }
 
+function OrderDescription({ orderId }: { orderId: string }) {
+  return (
+    <>
+      Order:{' '}
+      <Link
+        href={`/orders/${encodeURIComponent(orderId)}`}
+        className="font-mono text-accent hover:underline"
+      >
+        {orderId}
+      </Link>
+    </>
+  );
+}
+
 export function ReviewPageClient({ orderId }: { orderId: string }) {
   const [loading, setLoading] = useState(true);
-  const [vcfOnly, setVcfOnly] = useState(false);
+  const [stopping, setStopping] = useState(false);
   const [error, setError]     = useState('');
   const [elapsedMs, setElapsedMs] = useState(0);
   const [tab, setTab]         = useState<ReviewTabId>('variants');
@@ -484,7 +496,6 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     const ac = new AbortController();
     const started = performance.now();
     setLoading(true);
-    setVcfOnly(false);
     setError('');
     setElapsedMs(0);
     reset();
@@ -498,18 +509,9 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
 
     const url = reviewResultUrl(orderId);
 
-    ordersApi
-      .getById(orderId)
-      .then((order) => {
-        if (ac.signal.aborted) return null;
-        if (isVcfOnlyWesOrder(order)) {
-          setVcfOnly(true);
-          return null;
-        }
-        setVcfOnly(false);
-        console.info(`[review] fetch start ${url}`);
-        return reviewApi.getResult(orderId, { signal: ac.signal });
-      })
+    console.info(`[review] fetch start ${url}`);
+    reviewApi
+      .getResult(orderId, { signal: ac.signal })
       .then((data) => {
         if (!data || ac.signal.aborted) return;
         const ms = Math.round(performance.now() - started);
@@ -551,6 +553,37 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     };
   }, [orderId, reset, setReviewDataAndSelection]);
 
+  // Full-exome review returns as soon as GVC accepts the VCF, then fills labels in place.
+  useEffect(() => {
+    const status = reviewData?.interpretation?.status;
+    if (loading || (status !== 'queued' && status !== 'running')) return;
+    let cancelled = false;
+    let timer = 0;
+    const tick = () => {
+      reviewApi
+        .getResult(orderId)
+        .then((data) => {
+          if (cancelled || !data) return;
+          const normalized = normalizeSgniptReviewData(data);
+          patchReviewData({
+            variants: normalized.variants,
+            interpretation: normalized.interpretation,
+            pgx: normalized.pgx,
+            dark_genes: normalized.dark_genes,
+          });
+        })
+        .catch(() => {})
+        .finally(() => {
+          if (!cancelled) timer = window.setTimeout(tick, 4000);
+        });
+    };
+    timer = window.setTimeout(tick, 4000);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(timer);
+    };
+  }, [loading, orderId, reviewData?.interpretation?.status, patchReviewData]);
+
   useEffect(() => {
     catalogApi.getPanels()
       .then((r) => {
@@ -582,7 +615,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
   }, [visibleTabs, tab]);
 
   useEffect(() => {
-    if (tab !== 'pgx' || loading || vcfOnly) return;
+    if (tab !== 'pgx' || loading) return;
     let cancelled = false;
     reviewApi
       .getResult(orderId)
@@ -594,33 +627,17 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
     return () => {
       cancelled = true;
     };
-  }, [tab, orderId, loading, vcfOnly, patchReviewData]);
+  }, [tab, orderId, loading, patchReviewData]);
 
   if (loading) {
     return (
       <div>
         <PageHeader
           title="Variant Review"
-          description={`Order: ${orderId}`}
+          description={<OrderDescription orderId={orderId} />}
           backHref="/orders"
         />
         <ReviewLoadingState orderId={orderId} elapsedMs={elapsedMs} />
-      </div>
-    );
-  }
-
-  if (vcfOnly) {
-    return (
-      <div>
-        <PageHeader
-          title="Annotated VCF"
-          description={`Order: ${orderId}`}
-          backHref={`/orders/${encodeURIComponent(orderId)}`}
-        />
-        <p className="mb-3 text-sm text-muted">
-          Whole Exome (vcf only) keeps the called VCF and the VEP-annotated VCF.
-        </p>
-        <VcfDownloadButtons orderId={orderId} />
       </div>
     );
   }
@@ -630,7 +647,7 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
       <div>
         <PageHeader
           title="Variant Review"
-          description={`Order: ${orderId}`}
+          description={<OrderDescription orderId={orderId} />}
           backHref="/orders"
         />
         <div className="flex min-h-[40vh] flex-col items-center justify-center gap-3 px-4 text-center">
@@ -660,12 +677,14 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
 
   const seqQc = isSgnipt ? sgniptSeqRows(reviewData) : seqRows(qcSummary ?? {});
   const analysisQc = isSgnipt ? sgniptAnalysisRows(reviewData) : covRows(qcSummary ?? {});
+  const interpretationStatus = reviewData.interpretation?.status;
+  const classificationRunning = interpretationStatus === 'queued' || interpretationStatus === 'running';
 
   return (
     <div>
       <PageHeader
         title="Variant Review"
-        description={`Order: ${orderId}`}
+        description={<OrderDescription orderId={orderId} />}
         backHref="/orders"
       />
 
@@ -679,7 +698,39 @@ export function ReviewPageClient({ orderId }: { orderId: string }) {
         {variantStats?.pathogenic_or_likely != null && <> · <strong className="text-danger">{variantStats.pathogenic_or_likely} P/LP</strong></>}
         {variantStats?.vus != null && <> · <strong className="text-warning">{variantStats.vus} VUS</strong></>}
         {generatedAt && <> · Generated: {generatedAt}</>}
+        {!classificationRunning && reviewData.interpretation?.message && (
+          <> · {reviewData.interpretation.message}</>
+        )}
       </p>
+
+      {classificationRunning && (
+        <div className="mb-3 flex items-center justify-between gap-3 rounded-md border border-warning/30 bg-warning/10 px-3 py-2 text-sm text-foreground">
+          <span>{reviewData.interpretation?.message || 'Classification in progress.'}</span>
+          <Button
+            size="sm"
+            variant="secondary"
+            isDisabled={stopping}
+            onPress={() => {
+              setStopping(true);
+              reviewApi
+                .stopClassification(orderId)
+                .then((data) => {
+                  if (!data) return;
+                  patchReviewData({
+                    variants: data.variants,
+                    interpretation: data.interpretation,
+                    pgx: data.pgx,
+                    dark_genes: data.dark_genes,
+                  });
+                })
+                .catch(() => {})
+                .finally(() => setStopping(false));
+            }}
+          >
+            {stopping ? 'Stopping…' : 'Stop'}
+          </Button>
+        </div>
+      )}
 
       {isSgnipt
         ? <SgniptBanner rd={reviewData} />

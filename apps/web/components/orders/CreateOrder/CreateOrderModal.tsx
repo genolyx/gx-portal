@@ -52,6 +52,26 @@ const NIPT_SPECIMEN_TYPES = ['Blood', 'Plasma', 'Other'];
 const DEFAULT_CAPTURE_PANEL = 'twist-exome2';
 /** Catalog id for the Carrier_302 interpretation package. */
 const DEFAULT_WHOLE_EXOME_INTERPRETATION_ID = 'invitae_302';
+const GVC_PANEL_OPTIONS = [
+  { value: 'carrier-2000', label: 'Carrier 2000+' },
+  { value: 'hereditary-cancer-71', label: 'Hereditary Cancer 71' },
+  { value: 'none', label: 'No GVC panel' },
+];
+const GVC_TRACK_OPTIONS = [
+  { value: 'carrier', label: 'Carrier' },
+  { value: 'rare_disease', label: 'Rare disease' },
+  { value: 'hereditary_cancer', label: 'Hereditary cancer' },
+];
+
+function defaultGvcPanel(service: ServiceCode, wesPanel: string, stored: string): string {
+  if (stored) return stored;
+  return service === 'whole_exome' && wesPanel === FULL_WES_PANEL_ID ? 'carrier-2000' : 'none';
+}
+
+function defaultGvcTrack(service: ServiceCode, stored: string): string {
+  if (stored) return stored;
+  return service === 'whole_exome' ? 'rare_disease' : 'carrier';
+}
 const PREGNANCY_TYPES = ['Singleton', 'Twin'];
 const NIPT_PREGNANCY_TYPES = ['Singleton', 'Twin', 'Multiple'];
 const MEAS_METHODS    = ['LMP', 'CRL'];
@@ -207,6 +227,15 @@ function buildNiptParams(nipt: ReturnType<typeof initNiptSub>) {
   };
 }
 
+function optionalLimit(raw: string, whole: boolean): number | undefined | 'invalid' {
+  const text = raw.trim();
+  if (!text) return undefined;
+  const value = Number(text);
+  if (!Number.isFinite(value) || value < 0) return 'invalid';
+  if (whole && !Number.isInteger(value)) return 'invalid';
+  return value;
+}
+
 // ─── Field primitives ──────────────────────────────────────────────────────────
 
 function Field({ label, required, wide, children }: {
@@ -315,6 +344,10 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   const [captureBed,  setCaptureBed]  = useState('');
   const [diseaseBed,  setDiseaseBed]  = useState('');
   const [maxAf,       setMaxAf]       = useState('');
+  const [minQual,     setMinQual]     = useState('');
+  const [minGq,       setMinGq]       = useState('');
+  const [minDepth,    setMinDepth]    = useState('');
+  const [passOnly,    setPassOnly]    = useState(true);
   const [hpoTerms,    setHpoTerms]    = useState('');
   const [geneFilter,  setGeneFilter]  = useState('');
 
@@ -328,6 +361,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   const [includeApoePgx,            setIncludeApoePgx]            = useState(false);
   const [panelFilterAfterAnalysis,  setPanelFilterAfterAnalysis]  = useState(true);
   const [interpretationGenesExtra,  setInterpretationGenesExtra]  = useState('');
+  const [gvcPanelCode,              setGvcPanelCode]              = useState('none');
+  const [gvcTrack,                  setGvcTrack]                  = useState('carrier');
 
   // Carrier sub-params
   const [carrier, setCarrier] = useState(initCarrierSub('carrier_screening'));
@@ -356,6 +391,10 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
     setCaptureBed(populated.captureBed);
     setDiseaseBed(populated.diseaseBed);
     setMaxAf(populated.maxAf);
+    setMinQual(populated.minQual);
+    setMinGq(populated.minGq);
+    setMinDepth(populated.minDepth);
+    setPassOnly(populated.passOnly);
     setHpoTerms(populated.hpoTerms);
     setGeneFilter(populated.geneFilter);
     setWesPanel(populated.wesPanel);
@@ -363,6 +402,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
     setIncludeApoePgx(populated.includeApoePgx);
     setPanelFilterAfterAnalysis(populated.panelFilterAfterAnalysis);
     setInterpretationGenesExtra(populated.interpretationGenesExtra);
+    setGvcPanelCode(defaultGvcPanel(populated.service, populated.wesPanel, populated.gvcPanelCode));
+    setGvcTrack(defaultGvcTrack(populated.service, populated.gvcFrequencyTrack));
     setCarrier(populated.carrier as ReturnType<typeof initCarrierSub>);
     setNipt(populated.nipt as ReturnType<typeof initNiptSub>);
   }, [initial]);
@@ -403,6 +444,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
       return;
     }
     setCarrier(initCarrierSub(service));
+    setGvcTrack(service === 'whole_exome' ? 'rare_disease' : 'carrier');
+    setGvcPanelCode('none');
     if (service === 'whole_exome') {
       setWesPanel(DEFAULT_WHOLE_EXOME_INTERPRETATION_ID);
       setPanelFilterAfterAnalysis(true);
@@ -444,6 +487,13 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
   const handleSubmit = async () => {
     if (service !== 'sgnipt' && !wesPanel) { setError('Primary (interpretation) panel is required.'); return; }
+    const qual = optionalLimit(minQual, false);
+    const gq = optionalLimit(minGq, true);
+    const depth = optionalLimit(minDepth, true);
+    if (qual === 'invalid' || gq === 'invalid' || depth === 'invalid') {
+      setError('QUAL, genotype quality, and read depth must be blank or a number. Genotype quality and read depth are whole numbers.');
+      return;
+    }
     if (service === 'sgnipt') {
       const vErr = validateNiptClinical(nipt);
       if (vErr) { setError(vErr); return; }
@@ -468,9 +518,15 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
           capture_bed:                 captureBed.trim() || captureKits.find((k) => k.id === capturePanel)?.capture_bed || undefined,
           disease_bed:                 diseaseBed.trim() || undefined,
           max_af:                      maxAf.trim() ? parseFloat(maxAf) : undefined,
+          min_qual:                    qual,
+          min_gq:                      gq,
+          min_depth:                   depth,
+          pass_only:                   passOnly,
           hpo_terms:                   hpoTerms.trim() || undefined,
           gene_filter:                 geneFilter.trim() || undefined,
           panel_filter_after_analysis: wesPanel === FULL_WES_PANEL_ID ? false : panelFilterAfterAnalysis,
+          gvc_panel_code:              gvcPanelCode || undefined,
+          gvc_frequency_track:         gvcTrack || undefined,
           include_apoe_pgx:            includeApoePgx,
           interpretation_genes_extra:  interpretationGenesExtra.trim() || undefined,
           carrier:                     carrierSub,
@@ -609,6 +665,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                           setIncludeApoePgx(false);
                           setC('include_pgx', false);
                           setC('reuse_prior_pipeline_outputs', false);
+                          setGvcPanelCode('carrier-2000');
+                          setGvcTrack('rare_disease');
                         } else if (wesPanel === FULL_WES_PANEL_ID) {
                           setPanelFilterAfterAnalysis(true);
                           setC('include_pgx', true);
@@ -634,6 +692,27 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                       ]}
                     />
                   </Field>
+                  <Field label="GVC panel">
+                    <Sel value={gvcPanelCode} onChange={setGvcPanelCode} options={GVC_PANEL_OPTIONS} />
+                  </Field>
+                  <Field label="Frequency track">
+                    <Sel value={gvcTrack} onChange={setGvcTrack} options={GVC_TRACK_OPTIONS} />
+                  </Field>
+                  <Field label="Minimum QUAL">
+                    <Inp type="number" value={minQual} onChange={setMinQual} placeholder="Blank skips QUAL" />
+                  </Field>
+                  <Field label="Minimum genotype quality (GQ)">
+                    <Inp type="number" value={minGq} onChange={setMinGq} placeholder="Blank skips GQ" />
+                  </Field>
+                  <Field label="Minimum read depth (DP)">
+                    <Inp type="number" value={minDepth} onChange={setMinDepth} placeholder="Blank skips depth. 20 removes DP below 20" />
+                  </Field>
+                  <Field label="Caller filter">
+                    <Chk value={passOnly} onChange={setPassOnly} label="FILTER is PASS" />
+                  </Field>
+                  <p className="col-span-full m-0 text-xs leading-relaxed text-muted">
+                    GVC classifies with this panel, frequency track, and the quality limits above. A blank limit is skipped. Whole Exome (vcf only) starts as Carrier 2000+ and Rare disease. Saving a different value starts a new classification the next time review opens.
+                  </p>
                   <Field label="Extra interpretation genes" wide>
                     <Inp value={interpretationGenesExtra} onChange={setInterpretationGenesExtra}
                       placeholder="Comma-separated gene symbols (optional)" />

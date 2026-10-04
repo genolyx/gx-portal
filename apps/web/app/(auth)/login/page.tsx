@@ -1,9 +1,17 @@
 'use client';
 
-import { useState, FormEvent } from 'react';
+import { useEffect, useState, FormEvent } from 'react';
 import { useRouter } from 'next/navigation';
 import { Alert, Button, Card, Form, Input, Label } from '@heroui/react';
 import { authApi } from '../../../lib/api/auth';
+
+function nextPath(): string {
+  const from = new URLSearchParams(window.location.search).get('from');
+  if (!from || !from.startsWith('/') || from.startsWith('//') || from.startsWith('/login')) {
+    return '/dashboard';
+  }
+  return from;
+}
 
 export default function LoginPage() {
   const router = useRouter();
@@ -12,13 +20,20 @@ export default function LoginPage() {
   const [error, setError] = useState('');
   const [loading, setLoading] = useState(false);
 
+  useEffect(() => {
+    const dest = nextPath();
+    authApi.me().then((user) => {
+      if (user) router.replace(dest);
+    }).catch(() => {});
+  }, [router]);
+
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
     setError('');
     setLoading(true);
     try {
       await authApi.login(username, password);
-      router.push('/dashboard');
+      router.push(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {

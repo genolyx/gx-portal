@@ -8,6 +8,7 @@ import { ordersApi } from '../../../lib/api/orders';
 import { authApi } from '../../../lib/api/auth';
 import { PageHeader } from '../../ui/PageHeader';
 import { OrderStatusBadge } from '../../ui/OrderStatusBadge';
+import { ClassificationProgress, useClassificationProgress } from '../../review/ClassificationProgress';
 import { DatePickerField } from '../../ui/DatePickerField';
 import { SelectField } from '../../ui/SelectField';
 import { RefreshButton } from '../../ui/RefreshButton';
@@ -855,6 +856,11 @@ export function OrdersPageClient() {
   const currentPage = Math.min(page, pageCount);
   const pageStart = (currentPage - 1) * pageSize;
   const pageRows = sorted.slice(pageStart, pageStart + pageSize);
+  const classification = useClassificationProgress(
+    pageRows
+      .filter((order) => order.status === 'COMPLETED' || order.status === 'REPORT_READY')
+      .map((order) => order.order_id),
+  );
 
   return (
     <div>
@@ -936,6 +942,7 @@ export function OrdersPageClient() {
                 <SortableHead label="Lab / Client"   sortKey="lab_code"     current={sort} onSort={handleSort} />
                 <SortableHead label="Status"         sortKey="status"       current={sort} onSort={handleSort} />
                 <SortableHead label="Progress"       sortKey="progress"     current={sort} onSort={handleSort} />
+                <th className="px-3 py-2.5 text-left text-xs font-semibold text-muted uppercase tracking-wide border-b border-border whitespace-nowrap">Classification</th>
                 <SortableHead label="Order Created"  sortKey="created_at"   current={sort} onSort={handleSort} />
                 <SortableHead label="Result Updated" sortKey="updated_at"   current={sort} onSort={handleSort} />
                 <SortableHead label="Completed"      sortKey="completed_at" current={sort} onSort={handleSort} />
@@ -982,6 +989,9 @@ export function OrdersPageClient() {
                   </td>
                   <td className="px-3 py-2.5 border-b border-border">
                     <ProgressBar value={o.progress ?? 0} />
+                  </td>
+                  <td className="px-3 py-2.5 border-b border-border">
+                    <ClassificationProgress job={classification[o.order_id]} />
                   </td>
                   <td className="px-3 py-2.5 border-b border-border whitespace-nowrap">
                     <span className="text-xs text-muted">{fmtDate(o.created_at)}</span>

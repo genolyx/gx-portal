@@ -5,6 +5,8 @@ import { Readable } from 'stream';
 import { SystemService } from './system.service';
 import { HostResourcesService } from './host-resources.service';
 import { ExternalKeysService } from './external-keys.service';
+import { InterpretationSettingsService } from '../review/interpretation-settings.service';
+import { GvcPartnerService } from '../review/gvc-partner.service';
 import { AdminGuard } from '../auth/guards/admin.guard';
 import { API_VERSION } from '../version';
 
@@ -15,6 +17,8 @@ export class SystemController {
     private readonly systemService: SystemService,
     private readonly hostResourcesService: HostResourcesService,
     private readonly externalKeys: ExternalKeysService,
+    private readonly interpretation: InterpretationSettingsService,
+    private readonly gvc: GvcPartnerService,
   ) {}
 
   @Get('health')
@@ -155,5 +159,63 @@ export class SystemController {
   @ApiOperation({ summary: 'Save External Portal outbound (callback) API key' })
   setOutboundKey(@Body() body: { key?: string }) {
     return this.externalKeys.setOutbound(body?.key ?? '');
+  }
+
+  @Get('interpretation')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Classification source: portal pipeline or GVC' })
+  getInterpretation() {
+    return this.interpretation.get();
+  }
+
+  @Put('interpretation')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Switch classification between the portal and GVC' })
+  setInterpretation(@Body() body: { source?: string }) {
+    return this.interpretation.set(body?.source === 'gvc' ? 'gvc' : 'pipeline');
+  }
+
+  @Put('interpretation/connection')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Save the GVC partner URL and token' })
+  setInterpretationConnection(@Body() body: { url?: string; token?: string }) {
+    return this.interpretation.setConnection(body ?? {});
+  }
+
+  @Post('interpretation/token/generate')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Generate a GVC partner token to paste into GVC' })
+  generateInterpretationToken() {
+    const token = this.interpretation.generateToken();
+    return { token, ...this.interpretation.get() };
+  }
+
+  @Post('interpretation/parity')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Compare portal and GVC classifications for one order' })
+  interpretationParity(@Body() body: { orderId?: string }) {
+    const orderId = body?.orderId?.trim();
+    if (!orderId) throw new HttpException('orderId is required', HttpStatus.BAD_REQUEST);
+    return this.gvc.parity(orderId);
+  }
+
+  @Put('interpretation/services')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Pin one service to the portal or to GVC after a matching comparison' })
+  async setInterpretationService(@Body() body: { service?: string; source?: string; orderId?: string }) {
+    const service = body?.service?.trim() ?? '';
+    if (body?.source === 'default' || body?.source === '' || body?.source == null) {
+      return this.interpretation.setService(service, null);
+    }
+    if (body.source === 'pipeline') return this.interpretation.setService(service, 'pipeline');
+    if (body.source !== 'gvc') throw new HttpException('source must be pipeline, gvc, or default', HttpStatus.BAD_REQUEST);
+    const orderId = body.orderId?.trim();
+    if (!orderId) throw new HttpException('Compare an order of this service before using GVC', HttpStatus.BAD_REQUEST);
+    const report = await this.gvc.parity(orderId);
+    if (report.service !== service) {
+      throw new HttpException('That order belongs to a different service', HttpStatus.BAD_REQUEST);
+    }
+    if (!report.agreed) throw new HttpException(report.message, HttpStatus.BAD_REQUEST);
+    return this.interpretation.setService(service, 'gvc');
   }
 }

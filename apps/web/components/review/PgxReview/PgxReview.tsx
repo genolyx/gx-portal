@@ -274,6 +274,13 @@ export function PgxReview({
         <p className="mb-2.5 text-[13px] text-danger">{String(pgx.message)}</p>
       )}
 
+      {pgx.gvc_scope === 'excluded' && (
+        <p className="mb-2.5 text-[13px] text-muted">PGx is not included for this order.</p>
+      )}
+      {pgx.gvc_scope === 'apoe_excluded' && (
+        <p className="mb-2.5 text-[13px] text-muted">APOE PGx is not included for this order.</p>
+      )}
+
       {(showPharmcatTab || showExtendedTab) && (
         <Tabs
           selectedKey={effectiveTab}
