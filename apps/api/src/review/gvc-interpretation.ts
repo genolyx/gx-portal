@@ -1,4 +1,5 @@
 import { createHash } from 'crypto';
+import { existsSync } from 'fs';
 import type {
   DarkGenes,
   GvcEvidence,
@@ -10,6 +11,22 @@ import type {
 } from '@gx-portal/types';
 
 export const INTERPRETATION_SERVICES = ['carrier_screening', 'whole_exome', 'hereditary_cancer', 'health_screening'] as const;
+
+/** Inside the production container, localhost is the container. GVC stays on the host. */
+export function partnerUrlForRuntime(url: string, inDocker = existsSync('/.dockerenv')): string {
+  const trimmed = url.trim().replace(/\/$/, '');
+  if (!trimmed || !inDocker) return trimmed;
+  try {
+    const parsed = new URL(trimmed);
+    if (parsed.hostname === 'localhost' || parsed.hostname === '127.0.0.1') {
+      parsed.hostname = 'host.docker.internal';
+      return parsed.toString().replace(/\/$/, '');
+    }
+  } catch {
+    return trimmed;
+  }
+  return trimmed;
+}
 
 export type InterpretationSource = 'pipeline' | 'gvc';
 

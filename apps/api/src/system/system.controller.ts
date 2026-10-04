@@ -175,6 +175,13 @@ export class SystemController {
     return this.interpretation.set(body?.source === 'gvc' ? 'gvc' : 'pipeline');
   }
 
+  @Get('interpretation/connection')
+  @UseGuards(AdminGuard)
+  @ApiOperation({ summary: 'Check that GVC accepts the saved partner token' })
+  checkInterpretationConnection() {
+    return this.gvc.checkConnection();
+  }
+
   @Put('interpretation/connection')
   @UseGuards(AdminGuard)
   @ApiOperation({ summary: 'Save the GVC partner URL and token' })

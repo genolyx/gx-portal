@@ -13,6 +13,7 @@ import {
   curationEvidence,
   interpretationServiceKey,
   gvcFrequencyTrackForReview,
+  partnerUrlForRuntime,
   gvcPanelCodeForReview,
   isFullWesReview,
   partnerJobRequest,
@@ -103,7 +104,7 @@ export class GvcPartnerService {
           held: ran.summaries.filter((summary) => summary.heldReason).length,
         };
     const withVariants: ReviewData = { ...review, variants: applied.variants };
-    const dark = await this.overlayDarkGenes(this.settings.partnerUrl(), this.settings.partnerToken(), ran.job.id, withVariants);
+    const dark = await this.overlayDarkGenes(partnerUrlForRuntime(this.settings.partnerUrl()), this.settings.partnerToken(), ran.job.id, withVariants);
     const scoped = applyGvcPgx(dark.review.pgx, ran.job);
     return {
       ...dark.review,
@@ -164,7 +165,7 @@ export class GvcPartnerService {
     | { state: 'pending'; job: PartnerJob; summaries: GvcVariantSummary[] }
     | { state: 'succeeded'; job: PartnerJob; summaries: GvcVariantSummary[] }
   > {
-    const baseUrl = this.settings.partnerUrl();
+    const baseUrl = partnerUrlForRuntime(this.settings.partnerUrl());
     const token = this.settings.partnerToken();
     if (!baseUrl || token.length < 32) {
       return { state: 'skipped', message: 'GVC partner API is not configured' };
@@ -237,7 +238,7 @@ export class GvcPartnerService {
 
   async progress(orderIds: string[]): Promise<ClassificationProgress[]> {
     const ids = [...new Set(orderIds.map((id) => id.trim()).filter(Boolean))].slice(0, 100);
-    const baseUrl = this.settings.partnerUrl();
+    const baseUrl = partnerUrlForRuntime(this.settings.partnerUrl());
     const token = this.settings.partnerToken();
     if (!ids.length || !baseUrl || token.length < 32) return [];
     const response = await fetch(`${baseUrl}/api/partner/v1/interpretation-jobs/progress`, {
@@ -259,7 +260,7 @@ export class GvcPartnerService {
   }
 
   async stop(orderId: string): Promise<{ cancelled: number }> {
-    const baseUrl = this.settings.partnerUrl();
+    const baseUrl = partnerUrlForRuntime(this.settings.partnerUrl());
     const token = this.settings.partnerToken();
     if (!baseUrl || token.length < 32) {
       throw new BadRequestException('GVC partner API is not configured');
@@ -302,7 +303,7 @@ export class GvcPartnerService {
     if (!/^[a-f0-9]{64}$/.test(jobId) || !query.chrom?.trim() || !Number.isInteger(pos) || pos <= 0 || !query.ref || !query.alt) {
       throw new BadRequestException('jobId, chrom, pos, ref, and alt are required');
     }
-    const baseUrl = this.settings.partnerUrl();
+    const baseUrl = partnerUrlForRuntime(this.settings.partnerUrl());
     const token = this.settings.partnerToken();
     if (!baseUrl || token.length < 32) return none('unavailable');
     const locus = { chrom: query.chrom, pos, ref: query.ref, alt: query.alt };
@@ -323,6 +324,26 @@ export class GvcPartnerService {
       const message = error instanceof Error ? error.message : 'GVC evidence failed';
       this.logger.warn(`GVC evidence unavailable for ${orderId}: ${message}`);
       return none('unavailable');
+    }
+  }
+
+  async checkConnection(): Promise<{ ok: boolean; message: string }> {
+    const url = partnerUrlForRuntime(this.settings.partnerUrl());
+    const token = this.settings.partnerToken();
+    if (!url || token.length < 32) {
+      return { ok: false, message: 'Save the GVC URL and a token first.' };
+    }
+    try {
+      const response = await fetch(`${url}/api/partner/v1/health`, {
+        headers: { Authorization: `Bearer ${token}` },
+        signal: AbortSignal.timeout(8000),
+      });
+      if (response.status === 200) return { ok: true, message: 'Connected. GVC accepted this token.' };
+      if (response.status === 401) return { ok: false, message: 'GVC refused this token.' };
+      if (response.status === 503) return { ok: false, message: 'GVC has no partner token saved.' };
+      return { ok: false, message: `GVC responded with status ${response.status}.` };
+    } catch {
+      return { ok: false, message: 'GVC did not respond.' };
     }
   }
 

@@ -13,12 +13,22 @@ import {
   sourceForService,
   isFullWesReview,
   partnerJobRequest,
+  partnerUrlForRuntime,
   resolveInterpretationSource,
   variantsFromGvcSummaries,
   classificationProgressMessage,
   waitForPartnerJob,
   variantLocusKey,
 } from './gvc-interpretation';
+
+describe('partner URL inside Docker', () => {
+  it('reaches a host GVC when the saved URL is localhost', () => {
+    assert.equal(partnerUrlForRuntime('http://localhost:3010', true), 'http://host.docker.internal:3010');
+    assert.equal(partnerUrlForRuntime('http://127.0.0.1:3010/', true), 'http://host.docker.internal:3010');
+    assert.equal(partnerUrlForRuntime('http://localhost:3010', false), 'http://localhost:3010');
+    assert.equal(partnerUrlForRuntime('https://gvc.example', true), 'https://gvc.example');
+  });
+});
 
 describe('interpretation source', () => {
   it('stays on the pipeline unless gvc is set', () => {

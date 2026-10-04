@@ -701,6 +701,17 @@ function ClassificationSourceSection() {
   const [copied, setCopied] = useState(false);
   const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState<{ ok: boolean; text: string } | null>(null);
+  const [link, setLink] = useState<{ ok: boolean; message: string } | null>(null);
+  const [checking, setChecking] = useState(false);
+
+  const checkLink = useCallback(() => {
+    setChecking(true);
+    systemApi
+      .checkInterpretation()
+      .then(setLink)
+      .catch(() => setLink({ ok: false, message: 'Could not check the GVC connection.' }))
+      .finally(() => setChecking(false));
+  }, []);
 
   const apply = (cfg: InterpretationSettings) => {
     setSource(cfg.source);
@@ -715,7 +726,8 @@ function ClassificationSourceSection() {
       .getInterpretation()
       .then(apply)
       .catch(() => setMsg({ ok: false, text: 'Could not load the classification setting.' }));
-  }, []);
+    checkLink();
+  }, [checkLink]);
 
   const save = async (next: 'pipeline' | 'gvc') => {
     setSource(next);
@@ -746,6 +758,7 @@ function ClassificationSourceSection() {
       const cfg = await systemApi.setInterpretationConnection({ url });
       apply(cfg);
       setMsg({ ok: true, text: cfg.url ? 'GVC URL saved.' : 'GVC URL cleared.' });
+      checkLink();
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
     } finally {
@@ -767,6 +780,7 @@ function ClassificationSourceSection() {
           ? 'GVC token saved. It must match the token in GVC Settings.'
           : 'Saved GVC token cleared.',
       });
+      checkLink();
     } catch (e) {
       setMsg({ ok: false, text: e instanceof Error ? e.message : 'Save failed' });
     } finally {
@@ -941,6 +955,14 @@ function ClassificationSourceSection() {
         })}
       </div>
       <div className="flex flex-col gap-5 border-t border-border pt-4">
+        <div className="flex flex-wrap items-center gap-3">
+          <span className={`text-sm font-medium ${link?.ok ? 'text-success' : 'text-danger'}`}>
+            {checking ? 'Checking GVC…' : link?.message ?? 'Connection not checked.'}
+          </span>
+          <Button size="sm" variant="secondary" isDisabled={checking} onPress={checkLink}>
+            Check connection
+          </Button>
+        </div>
         <div className="flex flex-col gap-1.5">
           <Label htmlFor="gvcUrl">GVC URL</Label>
           <div className="flex flex-wrap items-end gap-2">

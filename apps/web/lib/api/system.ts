@@ -247,6 +247,9 @@ export const systemApi = {
   setInterpretationConnection: (body: { url?: string; token?: string }) =>
     api.put<InterpretationSettings>('/system/interpretation/connection', body),
 
+  checkInterpretation: () =>
+    api.get<{ ok: boolean; message: string }>('/system/interpretation/connection'),
+
   generateInterpretationToken: () =>
     api.post<InterpretationSettings & { token: string }>('/system/interpretation/token/generate'),
 
