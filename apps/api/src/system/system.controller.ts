@@ -1,6 +1,6 @@
-import { Controller, Get, Put, Post, Body, Query, Res, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
+import { Controller, Get, Put, Post, Body, Query, Req, Res, UseGuards, HttpException, HttpStatus } from '@nestjs/common';
 import { ApiTags, ApiOperation } from '@nestjs/swagger';
-import type { Response } from 'express';
+import type { Request, Response } from 'express';
 import { Readable } from 'stream';
 import { SystemService } from './system.service';
 import { HostResourcesService } from './host-resources.service';
@@ -159,6 +159,16 @@ export class SystemController {
   @ApiOperation({ summary: 'Save External Portal outbound (callback) API key' })
   setOutboundKey(@Body() body: { key?: string }) {
     return this.externalKeys.setOutbound(body?.key ?? '');
+  }
+
+  @Get('partner/health')
+  @ApiOperation({ summary: 'GVC checks that this portal holds the same partner token' })
+  partnerHealth(@Req() req: Request) {
+    const result = this.interpretation.partnerHandshake(req.header('authorization'));
+    if (!result.ok) {
+      throw new HttpException({ ok: false }, result.status);
+    }
+    return { service: 'gx-portal', authenticated: true };
   }
 
   @Get('interpretation')

@@ -1,6 +1,6 @@
 import { BadRequestException, Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
-import { randomBytes } from 'crypto';
+import { randomBytes, timingSafeEqual } from 'crypto';
 import type { InterpretationServiceName, InterpretationServiceSources, ReviewData } from '@gx-portal/types';
 import { DbService } from '../common/db.service';
 import {
@@ -62,6 +62,21 @@ export class InterpretationSettingsService {
 
   partnerToken(): string {
     return this.getMeta(META_TOKEN) || (this.config.get<string>('GVC_PARTNER_TOKEN') || '').trim();
+  }
+
+  /** GVC calls this with the shared bearer token. No portal login is required. */
+  partnerHandshake(authorization: string | undefined): { ok: true } | { ok: false; status: 401 | 503 } {
+    const expected = this.partnerToken();
+    if (expected.length < 32) return { ok: false, status: 503 };
+    const header = authorization ?? '';
+    const received = header.startsWith('Bearer ')
+      ? header.slice('Bearer '.length).trim()
+      : '';
+    const receivedBuffer = Buffer.from(received);
+    const expectedBuffer = Buffer.from(expected);
+    const matches = receivedBuffer.length === expectedBuffer.length
+      && timingSafeEqual(receivedBuffer, expectedBuffer);
+    return matches ? { ok: true } : { ok: false, status: 401 };
   }
 
   set(source: InterpretationSource): InterpretationSettings {
