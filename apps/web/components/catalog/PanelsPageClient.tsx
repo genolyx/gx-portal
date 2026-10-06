@@ -1,6 +1,6 @@
 'use client';
 
-import { Fragment, useCallback, useEffect, useState } from 'react';
+import { Fragment, useCallback, useEffect, useRef, useState } from 'react';
 import {
   Button,
   Card,
@@ -12,7 +12,7 @@ import {
   TextArea,
 } from '@heroui/react';
 import { Pencil, Trash2 } from 'lucide-react';
-import { catalogApi, type CapturePanel, type PanelPackage } from '../../lib/api/catalog';
+import { catalogApi, type CapturePanel, type GvcPanel, type PanelPackage } from '../../lib/api/catalog';
 import { LabeledCheckbox } from '../ui/LabeledCheckbox';
 import { PageHeader } from '../ui/PageHeader';
 import { RefreshButton } from '../ui/RefreshButton';
@@ -50,6 +50,11 @@ export function PanelsPageClient() {
   const [captureForm, setCaptureForm] = useState(emptyCaptureForm());
   const [captureSaving, setCaptureSaving] = useState(false);
   const [captureMsg, setCaptureMsg] = useState('');
+  const [gvcPanels, setGvcPanels] = useState<GvcPanel[]>([]);
+  const [gvcForm, setGvcForm] = useState({ name: '', code: '', previousCode: '' });
+  const gvcFormRef = useRef<HTMLDivElement>(null);
+  const [gvcSaving, setGvcSaving] = useState(false);
+  const [gvcMsg, setGvcMsg] = useState('');
 
   const [expanded, setExpanded] = useState<string | null>(null);
   const [geneCache, setGeneCache] = useState<Record<string, string[]>>({});
@@ -77,10 +82,20 @@ export function PanelsPageClient() {
     }
   }, []);
 
+  const loadGvcPanels = useCallback(async () => {
+    try {
+      const res = await catalogApi.getGvcPanels();
+      setGvcPanels(res.panels ?? []);
+    } catch {
+      setGvcPanels([]);
+    }
+  }, []);
+
   useEffect(() => {
     void load(false);
     void loadCaptureKits();
-  }, [load, loadCaptureKits]);
+    void loadGvcPanels();
+  }, [load, loadCaptureKits, loadGvcPanels]);
 
   const saveCaptureKit = async () => {
     const id = captureForm.id.trim();
@@ -113,6 +128,55 @@ export function PanelsPageClient() {
       setCaptureMsg(err instanceof Error ? err.message : 'Save failed');
     } finally {
       setCaptureSaving(false);
+    }
+  };
+
+  const saveGvcPanel = async () => {
+    const name = gvcForm.name.trim();
+    const code = gvcForm.code.trim();
+    if (!name) {
+      setGvcMsg('Name is required.');
+      return;
+    }
+    if (!code) {
+      setGvcMsg('Code is required.');
+      return;
+    }
+    setGvcSaving(true);
+    setGvcMsg('');
+    try {
+      const res = await catalogApi.saveGvcPanel({
+        name,
+        code,
+        previousCode: gvcForm.previousCode || undefined,
+      });
+      setGvcPanels(res.panels ?? []);
+      setGvcForm({ name: '', code: '', previousCode: '' });
+      setGvcMsg(gvcForm.previousCode ? '✓ GVC panel updated' : '✓ GVC panel saved');
+    } catch (err) {
+      setGvcMsg(err instanceof Error ? err.message : 'Save failed');
+    } finally {
+      setGvcSaving(false);
+    }
+  };
+
+  const editGvcPanel = (panel: GvcPanel) => {
+    setGvcForm({ name: panel.name, code: panel.code, previousCode: panel.code });
+    setGvcMsg('');
+    requestAnimationFrame(() => {
+      gvcFormRef.current?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      gvcFormRef.current?.querySelector('input')?.focus();
+    });
+  };
+
+  const deleteGvcPanel = async (panel: GvcPanel) => {
+    if (!confirm(`Remove GVC panel "${panel.name}" (${panel.code})? Orders that already saved this code keep it.`)) return;
+    try {
+      const res = await catalogApi.deleteGvcPanel(panel.code);
+      setGvcPanels(res.panels ?? []);
+      if (gvcForm.previousCode === panel.code) setGvcForm({ name: '', code: '', previousCode: '' });
+    } catch (err) {
+      setGvcMsg(err instanceof Error ? err.message : 'Delete failed');
     }
   };
 
@@ -247,7 +311,7 @@ export function PanelsPageClient() {
     <div>
       <PageHeader
         title="Panels"
-        description="Capture panel is the sequencing kit (Twist Exome 2.0, Roche HyperExome). Interpretation package is the gene list used for the report."
+        description="Capture panel is the sequencing kit. Interpretation package is the portal gene list. A GVC panel is a list already saved in GVC: the name is what Create Order shows, and the code is what GVC matches."
       />
 
       <Card className="mb-5">
@@ -351,6 +415,93 @@ export function PanelsPageClient() {
                     </td>
                   </tr>
                 ))}
+              </tbody>
+            </table>
+          </div>
+        </Card.Content>
+      </Card>
+
+      <Card className="mb-5" id="gvc-panels">
+        <Card.Header>
+          <Card.Title>GVC panel</Card.Title>
+          <Card.Description>
+            Register a panel that already exists in GVC. The name is the label in Create Order. The code is pasted from GVC and is required.
+          </Card.Description>
+        </Card.Header>
+        <Card.Content className="flex flex-col gap-4">
+          {gvcForm.previousCode && (
+            <p className="m-0 rounded-lg bg-surface-secondary px-3 py-2 text-sm">
+              Editing <span className="font-medium">{gvcForm.name || gvcForm.previousCode}</span>. Change the name or code here, then choose Save changes.
+            </p>
+          )}
+          <div ref={gvcFormRef} className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+            <div className="flex flex-col gap-1.5">
+              <Label>Name *</Label>
+              <Input
+                value={gvcForm.name}
+                onChange={(e) => setGvcForm({ ...gvcForm, name: e.target.value })}
+                placeholder="e.g. Carrier 2000+"
+                fullWidth
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label>Code <span className="text-danger">*</span></Label>
+              <Input
+                value={gvcForm.code}
+                onChange={(e) => setGvcForm({ ...gvcForm, code: e.target.value })}
+                placeholder="Paste the code from GVC"
+                required
+                fullWidth
+              />
+              <p className="text-xs text-muted">
+                Paste the code GVC created. This value is sent when the order is classified.
+              </p>
+            </div>
+          </div>
+          <div className="flex flex-wrap items-center gap-2">
+            <Button size="sm" variant="primary" isDisabled={gvcSaving || !gvcForm.name.trim() || !gvcForm.code.trim()} onPress={() => void saveGvcPanel()}>
+              {gvcSaving ? 'Saving…' : gvcForm.previousCode ? 'Save changes' : 'Add GVC panel'}
+            </Button>
+            <Button size="sm" variant="ghost" onPress={() => setGvcForm({ name: '', code: '', previousCode: '' })}>
+              Reset
+            </Button>
+            {gvcMsg && (
+              <span className={gvcMsg.startsWith('✓') ? 'text-sm text-success' : 'text-sm text-danger'}>
+                {gvcMsg}
+              </span>
+            )}
+          </div>
+          <div className="overflow-x-auto rounded-lg border border-border">
+            <table className="w-full text-sm">
+              <thead className="bg-surface-secondary text-left text-muted">
+                <tr>
+                  <th className="p-2">Name</th>
+                  <th className="p-2">Code</th>
+                  <th className="p-2">Action</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gvcPanels.map((panel) => (
+                  <tr key={panel.code} className="border-t border-border">
+                    <td className="p-2 font-medium">{panel.name}</td>
+                    <td className="p-2 font-mono text-muted">{panel.code}</td>
+                    <td className="p-2">
+                      <div className="flex gap-1">
+                        <Button size="sm" variant="ghost" isIconOnly aria-label={`Edit ${panel.name}`} onPress={() => editGvcPanel(panel)}>
+                          <Pencil size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                        <Button size="sm" variant="danger" isIconOnly aria-label={`Delete ${panel.name}`} onPress={() => void deleteGvcPanel(panel)}>
+                          <Trash2 size={15} strokeWidth={2} aria-hidden />
+                        </Button>
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+                {gvcPanels.length === 0 && (
+                  <tr className="border-t border-border">
+                    <td className="p-2 text-muted" colSpan={3}>No GVC panels yet.</td>
+                  </tr>
+                )}
               </tbody>
             </table>
           </div>

@@ -2,6 +2,14 @@ import { BadRequestException, Injectable } from '@nestjs/common';
 import * as fs from 'fs';
 import * as path from 'path';
 import { DaemonService } from '../daemon/daemon.service';
+import { DbService } from '../common/db.service';
+import {
+  gvcPanelsMetaKey,
+  parseGvcPanels,
+  removeGvcPanel,
+  upsertGvcPanel,
+  type GvcPanelRecord,
+} from './gvc-panels';
 
 const WES_PANELS_CUSTOM_PATH =
   process.env.WES_PANELS_CUSTOM_JSON ?? '/data/wes_panels/wes_panels_custom.json';
@@ -38,7 +46,47 @@ type LitQuery = Record<string, string | number | boolean | undefined>;
 
 @Injectable()
 export class CatalogService {
-  constructor(private readonly daemon: DaemonService) {}
+  constructor(
+    private readonly daemon: DaemonService,
+    private readonly db: DbService,
+  ) {}
+
+  listGvcPanels(): GvcPanelRecord[] {
+    return parseGvcPanels(this.readGvcPanels());
+  }
+
+  saveGvcPanel(body: { code?: string; name?: string; previousCode?: string }): GvcPanelRecord[] {
+    const result = upsertGvcPanel(this.listGvcPanels(), {
+      code: body.code ?? '',
+      name: body.name ?? '',
+      previousCode: body.previousCode,
+    });
+    if (!result.ok) throw new BadRequestException(result.message);
+    this.writeGvcPanels(result.panels);
+    return result.panels;
+  }
+
+  deleteGvcPanel(code: string): GvcPanelRecord[] {
+    const panels = removeGvcPanel(this.listGvcPanels(), code);
+    this.writeGvcPanels(panels);
+    return panels;
+  }
+
+  private readGvcPanels(): string | null {
+    const row = this.db.db
+      .prepare('SELECT value FROM portal_meta WHERE key = ?')
+      .get(gvcPanelsMetaKey()) as { value: string } | undefined;
+    return row?.value ?? null;
+  }
+
+  private writeGvcPanels(panels: GvcPanelRecord[]): void {
+    this.db.db
+      .prepare(
+        `INSERT INTO portal_meta (key, value) VALUES (?, ?)
+         ON CONFLICT(key) DO UPDATE SET value = excluded.value`,
+      )
+      .run(gvcPanelsMetaKey(), JSON.stringify(panels));
+  }
 
   // ── Variant Sets ────────────────────────────────────────────────────
   getVariantSets() {

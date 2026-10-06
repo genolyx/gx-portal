@@ -1,7 +1,6 @@
 'use client';
 
 import { useEffect, useState, FormEvent } from 'react';
-import { useRouter } from 'next/navigation';
 import { Alert, Button, Card, Form, Input, Label } from '@heroui/react';
 import { authApi } from '../../../lib/api/auth';
 
@@ -14,7 +13,6 @@ function nextPath(): string {
 }
 
 export default function LoginPage() {
-  const router = useRouter();
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -23,9 +21,9 @@ export default function LoginPage() {
   useEffect(() => {
     const dest = nextPath();
     authApi.me().then((user) => {
-      if (user) router.replace(dest);
+      if (user) window.location.replace(dest);
     }).catch(() => {});
-  }, [router]);
+  }, []);
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault();
@@ -33,10 +31,10 @@ export default function LoginPage() {
     setLoading(true);
     try {
       await authApi.login(username, password);
-      router.push(nextPath());
+      // A client-side push reuses the cached redirect back to this page.
+      window.location.assign(nextPath());
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
-    } finally {
       setLoading(false);
     }
   };

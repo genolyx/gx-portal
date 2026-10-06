@@ -30,7 +30,10 @@ export function middleware(request: NextRequest) {
     }
     const loginUrl = new URL('/login', request.url);
     loginUrl.searchParams.set('from', pathname);
-    return NextResponse.redirect(loginUrl);
+    const redirect = NextResponse.redirect(loginUrl);
+    redirect.headers.set('Cache-Control', 'no-store');
+    redirect.headers.set('x-middleware-cache', 'no-cache');
+    return redirect;
   }
 
   return NextResponse.next();

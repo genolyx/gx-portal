@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from 'react';
 import { Button, Input, Label, Modal, ToggleButton, ToggleButtonGroup, type Key } from '@heroui/react';
 import { LabeledCheckbox } from '../../ui/LabeledCheckbox';
 import { ordersApi } from '../../../lib/api/orders';
-import { catalogApi, type CapturePanel, type PanelPackage } from '../../../lib/api/catalog';
+import { catalogApi, type CapturePanel, type GvcPanel, type PanelPackage } from '../../../lib/api/catalog';
 import { populateOrderForm, resolveOrderServiceCode } from '../../../lib/order-form-populate';
 import { canEditOrderService } from '../../../lib/order-menu';
 import { cn } from '../../../lib/utils';
@@ -52,11 +52,6 @@ const NIPT_SPECIMEN_TYPES = ['Blood', 'Plasma', 'Other'];
 const DEFAULT_CAPTURE_PANEL = 'twist-exome2';
 /** Catalog id for the Carrier_302 interpretation package. */
 const DEFAULT_WHOLE_EXOME_INTERPRETATION_ID = 'invitae_302';
-const GVC_PANEL_OPTIONS = [
-  { value: 'carrier-2000', label: 'Carrier 2000+' },
-  { value: 'hereditary-cancer-71', label: 'Hereditary Cancer 71' },
-  { value: 'none', label: 'No GVC panel' },
-];
 const GVC_TRACK_OPTIONS = [
   { value: 'carrier', label: 'Carrier' },
   { value: 'rare_disease', label: 'Rare disease' },
@@ -64,8 +59,8 @@ const GVC_TRACK_OPTIONS = [
 ];
 
 function defaultGvcPanel(service: ServiceCode, wesPanel: string, stored: string): string {
-  if (stored) return stored;
-  return service === 'whole_exome' && wesPanel === FULL_WES_PANEL_ID ? 'carrier-2000' : 'none';
+  if (stored && stored !== 'none') return stored;
+  return service === 'whole_exome' && wesPanel === FULL_WES_PANEL_ID ? 'carrier-2000' : '';
 }
 
 function defaultGvcTrack(service: ServiceCode, stored: string): string {
@@ -361,7 +356,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   const [includeApoePgx,            setIncludeApoePgx]            = useState(false);
   const [panelFilterAfterAnalysis,  setPanelFilterAfterAnalysis]  = useState(true);
   const [interpretationGenesExtra,  setInterpretationGenesExtra]  = useState('');
-  const [gvcPanelCode,              setGvcPanelCode]              = useState('none');
+  const [gvcPanelCode,              setGvcPanelCode]              = useState('');
+  const [gvcPanels,                 setGvcPanels]                 = useState<GvcPanel[]>([]);
   const [gvcTrack,                  setGvcTrack]                  = useState('carrier');
 
   // Carrier sub-params
@@ -409,6 +405,21 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
   }, [initial]);
 
   useEffect(() => {
+    catalogApi.getGvcPanels().then((r) => setGvcPanels(r.panels ?? [])).catch(() => {});
+  }, []);
+
+  const gvcPanelOptions = (() => {
+    const options = gvcPanels.map((panel) => ({
+      value: panel.code,
+      label: `${panel.name} (${panel.code})`,
+    }));
+    if (gvcPanelCode && !options.some((option) => option.value === gvcPanelCode)) {
+      options.push({ value: gvcPanelCode, label: gvcPanelCode });
+    }
+    return options;
+  })();
+
+  useEffect(() => {
     catalogApi.getCapturePanels().then((r) => {
       const panels = r.panels ?? [];
       setCaptureKits(panels);
@@ -445,7 +456,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
     }
     setCarrier(initCarrierSub(service));
     setGvcTrack(service === 'whole_exome' ? 'rare_disease' : 'carrier');
-    setGvcPanelCode('none');
+    setGvcPanelCode('');
     if (service === 'whole_exome') {
       setWesPanel(DEFAULT_WHOLE_EXOME_INTERPRETATION_ID);
       setPanelFilterAfterAnalysis(true);
@@ -487,6 +498,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
 
   const handleSubmit = async () => {
     if (service !== 'sgnipt' && !wesPanel) { setError('Primary (interpretation) panel is required.'); return; }
+    if (service !== 'sgnipt' && !gvcPanelCode.trim()) { setError('GVC panel is required.'); return; }
     const qual = optionalLimit(minQual, false);
     const gq = optionalLimit(minGq, true);
     const depth = optionalLimit(minDepth, true);
@@ -692,8 +704,8 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                       ]}
                     />
                   </Field>
-                  <Field label="GVC panel">
-                    <Sel value={gvcPanelCode} onChange={setGvcPanelCode} options={GVC_PANEL_OPTIONS} />
+                  <Field label="GVC panel" required>
+                    <Sel value={gvcPanelCode} onChange={setGvcPanelCode} options={gvcPanelOptions} placeholder="Select a GVC panel" />
                   </Field>
                   <Field label="Frequency track">
                     <Sel value={gvcTrack} onChange={setGvcTrack} options={GVC_TRACK_OPTIONS} />
@@ -711,7 +723,7 @@ export function CreateOrderModal({ onClose, onSaved, initial }: Props) {
                     <Chk value={passOnly} onChange={setPassOnly} label="FILTER is PASS" />
                   </Field>
                   <p className="col-span-full m-0 text-xs leading-relaxed text-muted">
-                    GVC classifies with this panel, frequency track, and the quality limits above. A blank limit is skipped. Whole Exome (vcf only) starts as Carrier 2000+ and Rare disease. Saving a different value starts a new classification the next time review opens.
+                    GVC classifies with this panel code, frequency track, and the quality limits above. A blank limit is skipped. The code is pasted from GVC on the Panels page and is required here. Whole Exome (vcf only) starts as code carrier-2000 and Rare disease. Saving a different value starts a new classification the next time review opens.
                   </p>
                   <Field label="Extra interpretation genes" wide>
                     <Inp value={interpretationGenesExtra} onChange={setInterpretationGenesExtra}

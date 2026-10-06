@@ -80,6 +80,11 @@ export interface VariantSetEntriesResponse {
   entry_count?: number;
 }
 
+export interface GvcPanel {
+  code: string;
+  name: string;
+}
+
 export interface CapturePanel {
   id: string;
   label: string;
@@ -100,6 +105,12 @@ export const catalogApi = {
   getPanel: (id: string) => api.get<PanelPackage & { interpretation_genes?: string[] }>(`/panels/${encodeURIComponent(id)}`),
   savePanel: (body: unknown) => api.post<unknown>('/panels', body),
   deletePanel: (id: string) => api.delete(`/panels/${encodeURIComponent(id)}`),
+
+  getGvcPanels: () => api.get<{ panels: GvcPanel[] }>('/gvc-panels'),
+  saveGvcPanel: (body: { code: string; name: string; previousCode?: string }) =>
+    api.post<{ panels: GvcPanel[] }>('/gvc-panels', body),
+  deleteGvcPanel: (code: string) =>
+    api.delete<{ panels: GvcPanel[] }>(`/gvc-panels/${encodeURIComponent(code)}`),
 
   getCapturePanels: () => api.get<{ panels: CapturePanel[] }>('/capture-panels'),
   saveCapturePanel: (body: {

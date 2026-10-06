@@ -32,6 +32,24 @@ export class CatalogController {
   }
 
   // ── Panels ──────────────────────────────────────────────────────────
+  @Get('gvc-panels')
+  @ApiOperation({ summary: 'List GVC panels registered by name and code' })
+  listGvcPanels() {
+    return { panels: this.catalogService.listGvcPanels() };
+  }
+
+  @Post('gvc-panels')
+  @ApiOperation({ summary: 'Create a GVC panel or edit its name and code' })
+  saveGvcPanel(@Body() body: { code?: string; name?: string; previousCode?: string }) {
+    return { panels: this.catalogService.saveGvcPanel(body) };
+  }
+
+  @Delete('gvc-panels/:code')
+  @ApiOperation({ summary: 'Remove a GVC panel from the portal list' })
+  deleteGvcPanel(@Param('code') code: string) {
+    return { panels: this.catalogService.deleteGvcPanel(code) };
+  }
+
   @Get('panels')
   @ApiOperation({ summary: 'List all WES panel packages' })
   getPanels() {
